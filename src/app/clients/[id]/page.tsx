@@ -9,9 +9,15 @@ export default function ClientDetail() {
   const params = useParams()
   const [client, setClient] = useState<any>(null)
   const [metrics, setMetrics] = useState<any[]>([])
+  const [twitterStats, setTwitterStats] = useState<any>(null)
 
   useEffect(() => {
-    fetch(`/api/clients/${params.id}`).then(r => r.json()).then(setClient)
+    fetch(`/api/clients/${params.id}`).then(r => r.json()).then(c => {
+      setClient(c)
+      if (c.twitter_url) {
+        fetch(`/api/clients/${params.id}/twitter-stats`).then(r => r.json()).then(setTwitterStats)
+      }
+    })
     fetch(`/api/clients/${params.id}/metrics`).then(r => r.json()).then(m => {
       setMetrics(m.map((item: any) => ({ ...item, data: JSON.parse(item.data) })).reverse())
     })
@@ -166,6 +172,43 @@ export default function ClientDetail() {
         </>
       ) : (
         <p className="text-neutral-500">No metrics submitted yet. Submit your first weekly report.</p>
+      )}
+
+      {/* Twitter Growth */}
+      {client.twitter_url && twitterStats && twitterStats.currentFollowers !== null && (
+        <div className="bg-bg-card border border-border rounded-lg p-6 space-y-4">
+          <h3 className="text-sm font-medium text-white">Twitter Growth</h3>
+          <div className="flex gap-6">
+            <div>
+              <p className="text-xs text-neutral-500">Current Followers</p>
+              <p className="text-lg font-semibold text-white">{twitterStats.currentFollowers.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-xs text-neutral-500">Growth (30d)</p>
+              <p className={`text-lg font-semibold ${twitterStats.growth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {twitterStats.growth >= 0 ? '+' : ''}{twitterStats.growth.toLocaleString()}
+              </p>
+            </div>
+          </div>
+          {twitterStats.snapshots.length > 0 && (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-neutral-500 text-xs">
+                  <th className="text-left py-1">Date</th>
+                  <th className="text-right py-1">Followers</th>
+                </tr>
+              </thead>
+              <tbody>
+                {twitterStats.snapshots.slice(-7).map((s: any) => (
+                  <tr key={s.snapshot_date} className="border-t border-border">
+                    <td className="py-1.5 text-neutral-300">{s.snapshot_date}</td>
+                    <td className="py-1.5 text-right text-white">{s.followers_count.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       )}
 
       {/* Notes from latest */}

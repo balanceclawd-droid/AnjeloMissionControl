@@ -131,5 +131,52 @@ export async function GET(req: NextRequest) {
   const totalSynced = results.reduce((sum, r) => sum + r.synced, 0)
   console.log(`[Cron] Synced ${totalSynced} new tweets across ${competitors.length} competitors`)
 
-  return NextResponse.json({ totalSynced, results })
+  // Snapshot Twitter followers for all clients with a twitter_url
+  const today = new Date().toISOString().slice(0, 10)
+  let clientSnapshots = 0
+
+  const { data: clients } = await supabase
+    .from('clients')
+    .select('id, name, twitter_url')
+    .not('twitter_url', 'is', null)
+
+  if (clients && clients.length > 0) {
+    for (const client of clients) {
+      try {
+        // Skip if snapshot already exists for today
+        const { data: existing } = await supabase
+          .from('client_twitter_snapshots')
+          .select('id')
+          .eq('client_id', client.id)
+          .eq('snapshot_date', today)
+          .maybeSingle()
+
+        if (existing) continue
+
+        const username = extractUsername(client.twitter_url, client.name)
+        const userData = await twitterFetch(`/user?username=${encodeURIComponent(username)}`)
+        const legacy = userData?.result?.data?.user?.result?.legacy
+        if (!legacy) {
+          console.log(`[Cron] Client ${client.name}: user not found @${username}`)
+          continue
+        }
+
+        const { error: insertErr } = await supabase.from('client_twitter_snapshots').insert({
+          client_id: client.id,
+          followers_count: legacy.followers_count ?? 0,
+          tweet_count: legacy.statuses_count ?? 0,
+          snapshot_date: today,
+        })
+
+        if (!insertErr) clientSnapshots++
+        await new Promise(r => setTimeout(r, 1000))
+      } catch (err: any) {
+        console.log(`[Cron] Client ${client.name} snapshot error: ${err.message}`)
+      }
+    }
+  }
+
+  console.log(`[Cron] Took ${clientSnapshots} client Twitter snapshots`)
+
+  return NextResponse.json({ totalSynced, results, clientSnapshots })
 }
