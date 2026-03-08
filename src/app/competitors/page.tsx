@@ -33,14 +33,24 @@ function NextSyncCountdown() {
   )
 }
 
+const GAMING_NICHES = ['Gaming']
+const TRADING_NICHES = ['CEX', 'DEX', 'DeFi', 'Memecoin']
+
 export default function CompetitorsPage() {
   const [competitors, setCompetitors] = useState<any[]>([])
   const [showForm, setShowForm] = useState(false)
+  const [activeTab, setActiveTab] = useState<'all' | 'gaming' | 'trading'>('all')
   const [form, setForm] = useState({ name: '', niche: 'CEX', platform: 'twitter', account_url: '', tracked_type: 'specific' })
 
   useEffect(() => {
     fetch('/api/competitors').then(r => r.json()).then(setCompetitors)
   }, [])
+
+  const filteredCompetitors = competitors.filter(c => {
+    if (activeTab === 'gaming') return GAMING_NICHES.includes(c.niche)
+    if (activeTab === 'trading') return TRADING_NICHES.includes(c.niche)
+    return true
+  })
 
   const addCompetitor = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -119,6 +129,22 @@ export default function CompetitorsPage() {
         </button>
       </div>
 
+      <div className="flex gap-1 bg-neutral-900 border border-border rounded-lg p-1 w-fit">
+        {(['all', 'gaming', 'trading'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md capitalize transition-colors ${
+              activeTab === tab
+                ? 'bg-accent-red text-white'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            {tab === 'all' ? `All (${competitors.length})` : tab === 'gaming' ? `🎮 Gaming (${competitors.filter(c => GAMING_NICHES.includes(c.niche)).length})` : `📈 Trading (${competitors.filter(c => TRADING_NICHES.includes(c.niche)).length})`}
+          </button>
+        ))}
+      </div>
+
       {showForm && (
         <form onSubmit={addCompetitor} className="bg-bg-card border border-border rounded-lg p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -173,7 +199,7 @@ export default function CompetitorsPage() {
       )}
 
       <div className="bg-bg-card border border-border rounded-lg">
-        <DataTable columns={columns} data={competitors} />
+        <DataTable columns={columns} data={filteredCompetitors} />
       </div>
     </div>
   )
