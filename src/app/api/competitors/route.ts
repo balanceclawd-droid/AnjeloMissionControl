@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { supabase } from '@/lib/db'
 
 export async function GET() {
-  const db = getDb()
-  const competitors = db.prepare('SELECT * FROM competitors ORDER BY created_at DESC').all()
+  const { data: competitors, error } = await supabase
+    .from('competitors')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(competitors)
 }
 
@@ -13,8 +17,19 @@ export async function POST(req: NextRequest) {
   if (!name || !niche || !platform) {
     return NextResponse.json({ error: 'Name, niche, and platform required' }, { status: 400 })
   }
-  const db = getDb()
-  const result = db.prepare('INSERT INTO competitors (name, niche, platform, account_url, tracked_type) VALUES (?, ?, ?, ?, ?)').run(name, niche, platform, account_url || null, tracked_type || 'specific')
-  const competitor = db.prepare('SELECT * FROM competitors WHERE id = ?').get(result.lastInsertRowid)
+
+  const { data: competitor, error } = await supabase
+    .from('competitors')
+    .insert({
+      name,
+      niche,
+      platform,
+      account_url: account_url || null,
+      tracked_type: tracked_type || 'specific',
+    })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(competitor, { status: 201 })
 }

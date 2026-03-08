@@ -1,23 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { supabase } from '@/lib/db'
 import { calculateEngagementScore } from '@/lib/patterns'
 
 export async function GET(req: NextRequest) {
-  const db = getDb()
   const { searchParams } = new URL(req.url)
   const competitor_id = searchParams.get('competitor_id')
 
-  let query = `SELECT cp.*, c.name as competitor_name FROM competitive_posts cp JOIN competitors c ON cp.competitor_id = c.id`
-  const queryParams: any[] = []
+  let query = supabase
+    .from('competitive_posts')
+    .select('*, competitors!inner(name)')
 
   if (competitor_id) {
-    query += ' WHERE cp.competitor_id = ?'
-    queryParams.push(competitor_id)
+    query = query.eq('competitor_id', competitor_id)
   }
-  query += ' ORDER BY cp.posted_at DESC'
 
-  const posts = db.prepare(query).all(...queryParams)
-  return NextResponse.json(posts)
+  const { data: posts, error } = await query.order('posted_at', { ascending: false })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Flatten competitor name to match previous API shape
+  const formatted = (posts || []).map((p: any) => ({
+    ...p,
+    competitor_name: p.competitors?.name,
+    competitors: undefined,
+  }))
+
+  return NextResponse.json(formatted)
 }
 
 export async function POST(req: NextRequest) {
@@ -35,16 +42,28 @@ export async function POST(req: NextRequest) {
   const metrics = engagement_metrics || {}
   const score = calculateEngagementScore(metrics)
 
-  const db = getDb()
-  const result = db.prepare(`
-    INSERT INTO competitive_posts (competitor_id, platform, post_url, content, posted_at, engagement_metrics, hook_type, hook_text, structure, cta_type, visual_type, visual_description, engagement_score, flagged_as_pattern, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    competitor_id, platform, post_url || null, content || null, posted_at,
-    JSON.stringify(metrics), hook_type || null, hook_text || null,
-    structure || null, cta_type || null, visual_type || null,
-    visual_description || null, score, flagged_as_pattern ? 1 : 0, notes || null
-  )
-  const post = db.prepare('SELECT * FROM competitive_posts WHERE id = ?').get(result.lastInsertRowid)
+  const { data: post, error } = await supabase
+    .from('competitive_posts')
+    .insert({
+      competitor_id,
+      platform,
+      post_url: post_url || null,
+      content: content || null,
+      posted_at,
+      engagement_metrics: metrics,
+      hook_type: hook_type || null,
+      hook_text: hook_text || null,
+      structure: structure || null,
+      cta_type: cta_type || null,
+      visual_type: visual_type || null,
+      visual_description: visual_description || null,
+      engagement_score: score,
+      flagged_as_pattern: !!flagged_as_pattern,
+      notes: notes || null,
+    })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(post, { status: 201 })
 }

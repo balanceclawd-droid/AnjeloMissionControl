@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { supabase } from '@/lib/db'
 
 export async function GET() {
-  const db = getDb()
-  const clients = db.prepare('SELECT * FROM clients ORDER BY created_at DESC').all()
+  const { data: clients, error } = await supabase
+    .from('clients')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(clients)
 }
 
@@ -13,8 +17,13 @@ export async function POST(req: NextRequest) {
   if (!name || !vertical) {
     return NextResponse.json({ error: 'Name and vertical required' }, { status: 400 })
   }
-  const db = getDb()
-  const result = db.prepare('INSERT INTO clients (name, vertical) VALUES (?, ?)').run(name, vertical)
-  const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid)
+
+  const { data: client, error } = await supabase
+    .from('clients')
+    .insert({ name, vertical })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(client, { status: 201 })
 }

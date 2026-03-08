@@ -1,26 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { supabase } from '@/lib/db'
 import { detectPatterns } from '@/lib/patterns'
 
 export async function GET(req: NextRequest) {
-  const db = getDb()
   const { searchParams } = new URL(req.url)
   const niche = searchParams.get('niche')
   const status = searchParams.get('status')
 
-  let query = 'SELECT * FROM patterns WHERE 1=1'
-  const params: any[] = []
+  let query = supabase.from('patterns').select('*')
 
-  if (niche) { query += ' AND niche = ?'; params.push(niche) }
-  if (status) { query += ' AND status = ?'; params.push(status) }
+  if (niche) query = query.eq('niche', niche)
+  if (status) query = query.eq('status', status)
 
-  query += ' ORDER BY avg_engagement_score DESC'
-
-  const patterns = db.prepare(query).all(...params)
+  const { data: patterns, error } = await query.order('avg_engagement_score', { ascending: false })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(patterns)
 }
 
 export async function POST() {
-  const result = detectPatterns()
+  const result = await detectPatterns()
   return NextResponse.json(result)
 }

@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { supabase } from '@/lib/db'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const db = getDb()
-  const competitor = db.prepare('SELECT * FROM competitors WHERE id = ?').get(params.id)
-  if (!competitor) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  const posts = db.prepare('SELECT * FROM competitive_posts WHERE competitor_id = ? ORDER BY posted_at DESC').all(params.id)
-  return NextResponse.json({ ...competitor as object, posts })
+  const { data: competitor, error } = await supabase
+    .from('competitors')
+    .select('*')
+    .eq('id', params.id)
+    .single()
+
+  if (error) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const { data: posts } = await supabase
+    .from('competitive_posts')
+    .select('*')
+    .eq('competitor_id', params.id)
+    .order('posted_at', { ascending: false })
+
+  return NextResponse.json({ ...competitor, posts: posts || [] })
 }

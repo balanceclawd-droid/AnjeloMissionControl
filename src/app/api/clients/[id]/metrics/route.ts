@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { supabase } from '@/lib/db'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const db = getDb()
-  const metrics = db.prepare('SELECT * FROM weekly_metrics WHERE client_id = ? ORDER BY week_ending DESC').all(params.id)
+  const { data: metrics, error } = await supabase
+    .from('weekly_metrics')
+    .select('*')
+    .eq('client_id', params.id)
+    .order('week_ending', { ascending: false })
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(metrics)
 }
 
@@ -13,8 +18,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!week_ending || !metric_type || !data) {
     return NextResponse.json({ error: 'week_ending, metric_type, and data required' }, { status: 400 })
   }
-  const db = getDb()
-  const result = db.prepare('INSERT INTO weekly_metrics (client_id, week_ending, metric_type, data) VALUES (?, ?, ?, ?)').run(params.id, week_ending, metric_type, JSON.stringify(data))
-  const metric = db.prepare('SELECT * FROM weekly_metrics WHERE id = ?').get(result.lastInsertRowid)
+
+  const { data: metric, error } = await supabase
+    .from('weekly_metrics')
+    .insert({
+      client_id: params.id,
+      week_ending,
+      metric_type,
+      data: typeof data === 'string' ? JSON.parse(data) : data,
+    })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(metric, { status: 201 })
 }

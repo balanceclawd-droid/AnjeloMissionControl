@@ -1,22 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { supabase } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
-  const db = getDb()
   const { searchParams } = new URL(req.url)
   const dismissed = searchParams.get('dismissed')
 
-  let query = 'SELECT * FROM alerts'
-  const params: any[] = []
+  let query = supabase.from('alerts').select('*')
 
   if (dismissed !== null) {
-    query += ' WHERE dismissed = ?'
-    params.push(dismissed === 'true' ? 1 : 0)
+    query = query.eq('dismissed', dismissed === 'true')
   }
 
-  query += ' ORDER BY created_at DESC'
-
-  const alerts = db.prepare(query).all(...params)
+  const { data: alerts, error } = await query.order('created_at', { ascending: false })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(alerts)
 }
 
@@ -24,7 +20,12 @@ export async function PUT(req: NextRequest) {
   const body = await req.json()
   const { id, dismissed } = body
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
-  const db = getDb()
-  db.prepare('UPDATE alerts SET dismissed = ? WHERE id = ?').run(dismissed ? 1 : 0, id)
+
+  const { error } = await supabase
+    .from('alerts')
+    .update({ dismissed: !!dismissed })
+    .eq('id', id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }

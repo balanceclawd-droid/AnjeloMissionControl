@@ -1,32 +1,58 @@
 import { NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { supabase } from '@/lib/db'
 
 export async function GET() {
-  const db = getDb()
+  const { data: alerts } = await supabase
+    .from('alerts')
+    .select('*')
+    .eq('dismissed', false)
+    .order('created_at', { ascending: false })
+    .limit(10)
 
-  const alerts = db.prepare('SELECT * FROM alerts WHERE dismissed = 0 ORDER BY created_at DESC LIMIT 10').all()
-  const patterns = db.prepare('SELECT * FROM patterns ORDER BY avg_engagement_score DESC LIMIT 5').all()
+  const { data: patterns } = await supabase
+    .from('patterns')
+    .select('*')
+    .order('avg_engagement_score', { ascending: false })
+    .limit(5)
 
-  const clients = db.prepare('SELECT * FROM clients WHERE status = ?').all('active') as any[]
+  const { data: clients } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('status', 'active')
 
-  const clientGrid = clients.map(client => {
-    const latestMetric = db.prepare('SELECT * FROM weekly_metrics WHERE client_id = ? ORDER BY week_ending DESC LIMIT 1').get(client.id) as any
-    const prevMetric = db.prepare('SELECT * FROM weekly_metrics WHERE client_id = ? ORDER BY week_ending DESC LIMIT 1 OFFSET 1').get(client.id) as any
+  const clientGrid = await Promise.all(
+    (clients || []).map(async (client) => {
+      const { data: latestMetrics } = await supabase
+        .from('weekly_metrics')
+        .select('*')
+        .eq('client_id', client.id)
+        .order('week_ending', { ascending: false })
+        .limit(2)
 
-    return {
-      ...client,
-      latest_metric: latestMetric ? { ...latestMetric, data: JSON.parse(latestMetric.data) } : null,
-      prev_metric: prevMetric ? { ...prevMetric, data: JSON.parse(prevMetric.data) } : null,
-    }
-  })
+      const latestMetric = latestMetrics?.[0] || null
+      const prevMetric = latestMetrics?.[1] || null
+
+      return {
+        ...client,
+        latest_metric: latestMetric ? { ...latestMetric, data: typeof latestMetric.data === 'string' ? JSON.parse(latestMetric.data) : latestMetric.data } : null,
+        prev_metric: prevMetric ? { ...prevMetric, data: typeof prevMetric.data === 'string' ? JSON.parse(prevMetric.data) : prevMetric.data } : null,
+      }
+    })
+  )
+
+  const { count: total_clients } = await supabase.from('clients').select('*', { count: 'exact', head: true }).eq('status', 'active')
+  const { count: total_competitors } = await supabase.from('competitors').select('*', { count: 'exact', head: true })
+  const { count: total_posts } = await supabase.from('competitive_posts').select('*', { count: 'exact', head: true })
+  const { count: active_patterns } = await supabase.from('patterns').select('*', { count: 'exact', head: true }).in('status', ['emerging', 'active'])
+  const { count: active_alerts } = await supabase.from('alerts').select('*', { count: 'exact', head: true }).eq('dismissed', false)
 
   const stats = {
-    total_clients: (db.prepare('SELECT COUNT(*) as count FROM clients WHERE status = ?').get('active') as any).count,
-    total_competitors: (db.prepare('SELECT COUNT(*) as count FROM competitors').get() as any).count,
-    total_posts: (db.prepare('SELECT COUNT(*) as count FROM competitive_posts').get() as any).count,
-    active_patterns: (db.prepare("SELECT COUNT(*) as count FROM patterns WHERE status IN ('emerging', 'active')").get() as any).count,
-    active_alerts: (db.prepare('SELECT COUNT(*) as count FROM alerts WHERE dismissed = 0').get() as any).count,
+    total_clients: total_clients || 0,
+    total_competitors: total_competitors || 0,
+    total_posts: total_posts || 0,
+    active_patterns: active_patterns || 0,
+    active_alerts: active_alerts || 0,
   }
 
-  return NextResponse.json({ alerts, patterns, clientGrid, stats })
+  return NextResponse.json({ alerts: alerts || [], patterns: patterns || [], clientGrid, stats })
 }

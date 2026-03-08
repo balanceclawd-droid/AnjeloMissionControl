@@ -1,19 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
+import { supabase } from '@/lib/db'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const db = getDb()
-  const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(params.id)
-  if (!client) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const { data: client, error } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('id', params.id)
+    .single()
+
+  if (error) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(client)
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json()
-  const { name, vertical, status } = body
-  const db = getDb()
-  db.prepare('UPDATE clients SET name = COALESCE(?, name), vertical = COALESCE(?, vertical), status = COALESCE(?, status) WHERE id = ?')
-    .run(name, vertical, status, params.id)
-  const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(params.id)
+  const updates: Record<string, any> = {}
+  if (body.name !== undefined) updates.name = body.name
+  if (body.vertical !== undefined) updates.vertical = body.vertical
+  if (body.status !== undefined) updates.status = body.status
+
+  const { error: updateError } = await supabase
+    .from('clients')
+    .update(updates)
+    .eq('id', params.id)
+
+  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+
+  const { data: client, error } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('id', params.id)
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(client)
 }
