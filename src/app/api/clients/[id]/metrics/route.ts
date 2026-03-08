@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const { data: metric, error } = await supabase
     .from('weekly_metrics')
     .insert({
-      client_id: params.id,
+      client_id: parseInt(params.id, 10),
       week_ending,
       metric_type,
       data: typeof data === 'string' ? JSON.parse(data) : data,
