@@ -6,6 +6,33 @@ import DataTable from '@/components/DataTable'
 const nicheOptions = ['CEX', 'DEX', 'Gaming', 'Memecoin', 'NFT', 'DeFi', 'Social', 'Other']
 const platformOptions = ['twitter', 'tiktok', 'instagram', 'youtube', 'telegram', 'discord']
 
+function NextSyncCountdown() {
+  const [timeLeft, setTimeLeft] = useState('')
+
+  useEffect(() => {
+    const calc = () => {
+      const now = new Date()
+      const nextMidnightUTC = new Date()
+      nextMidnightUTC.setUTCHours(24, 0, 0, 0)
+      const diff = nextMidnightUTC.getTime() - now.getTime()
+      const h = Math.floor(diff / 3600000)
+      const m = Math.floor((diff % 3600000) / 60000)
+      const s = Math.floor((diff % 60000) / 1000)
+      setTimeLeft(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`)
+    }
+    calc()
+    const interval = setInterval(calc, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-neutral-500">
+      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
+      Next auto-sync in <span className="font-mono text-white">{timeLeft}</span>
+    </div>
+  )
+}
+
 export default function CompetitorsPage() {
   const [competitors, setCompetitors] = useState<any[]>([])
   const [showForm, setShowForm] = useState(false)
@@ -82,6 +109,7 @@ export default function CompetitorsPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Competitors</h1>
           <p className="text-sm text-neutral-500 mt-1">Track and analyze competitor accounts</p>
+          <div className="mt-2"><NextSyncCountdown /></div>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
