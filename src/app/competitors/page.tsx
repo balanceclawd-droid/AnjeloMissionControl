@@ -110,10 +110,26 @@ export default function CompetitorsPage() {
                 {platformOptions.map(p => <option key={p} value={p} className="capitalize">{p}</option>)}
               </select>
             </div>
-            <div>
-              <label className="block text-xs text-neutral-500 mb-1">Account URL</label>
-              <input type="url" value={form.account_url} onChange={e => setForm({...form, account_url: e.target.value})} className="w-full" placeholder="https://..." />
-            </div>
+            {form.platform === 'twitter' ? (
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Twitter Handle</label>
+                <input
+                  type="text"
+                  value={form.account_url.replace('https://twitter.com/', '')}
+                  onChange={e => {
+                    const handle = e.target.value.replace(/^@/, '')
+                    setForm({...form, account_url: handle ? `https://twitter.com/${handle}` : ''})
+                  }}
+                  className="w-full"
+                  placeholder="@binance"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Account URL</label>
+                <input type="url" value={form.account_url} onChange={e => setForm({...form, account_url: e.target.value})} className="w-full" placeholder="https://..." />
+              </div>
+            )}
             <div>
               <label className="block text-xs text-neutral-500 mb-1">Tracked Type</label>
               <select value={form.tracked_type} onChange={e => setForm({...form, tracked_type: e.target.value})} className="w-full">

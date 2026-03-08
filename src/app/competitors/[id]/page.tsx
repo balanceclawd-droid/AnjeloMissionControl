@@ -7,10 +7,36 @@ import DataTable from '@/components/DataTable'
 export default function CompetitorDetail() {
   const params = useParams()
   const [data, setData] = useState<any>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+
+  const fetchData = () => {
+    fetch(`/api/competitors/${params.id}`).then(r => r.json()).then(setData)
+  }
 
   useEffect(() => {
-    fetch(`/api/competitors/${params.id}`).then(r => r.json()).then(setData)
+    fetchData()
   }, [params.id])
+
+  const syncTwitter = async () => {
+    setSyncing(true)
+    setToast(null)
+    try {
+      const res = await fetch(`/api/twitter/sync/${params.id}`, { method: 'POST' })
+      const result = await res.json()
+      if (res.ok) {
+        setToast(`Synced ${result.synced} new tweets`)
+        fetchData()
+      } else {
+        setToast(`Error: ${result.error}`)
+      }
+    } catch {
+      setToast('Sync failed — check console for details')
+    } finally {
+      setSyncing(false)
+      setTimeout(() => setToast(null), 5000)
+    }
+  }
 
   if (!data) return <div className="text-neutral-500">Loading...</div>
 
@@ -67,17 +93,36 @@ export default function CompetitorDetail() {
           <Link href="/competitors" className="text-xs text-neutral-500 hover:text-white">Competitors</Link>
           <span className="text-xs text-neutral-600">/</span>
         </div>
-        <h1 className="text-2xl font-bold text-white">{data.name}</h1>
-        <div className="flex items-center gap-3 mt-1">
-          <span className="text-xs bg-neutral-800 px-2 py-1 rounded">{data.niche}</span>
-          <span className="text-xs text-neutral-500 capitalize">{data.platform}</span>
-          {data.account_url && (
-            <a href={data.account_url} target="_blank" rel="noopener noreferrer" className="text-xs text-accent-red hover:underline">
-              View Profile
-            </a>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">{data.name}</h1>
+            <div className="flex items-center gap-3 mt-1">
+              <span className="text-xs bg-neutral-800 px-2 py-1 rounded">{data.niche}</span>
+              <span className="text-xs text-neutral-500 capitalize">{data.platform}</span>
+              {data.account_url && (
+                <a href={data.account_url} target="_blank" rel="noopener noreferrer" className="text-xs text-accent-red hover:underline">
+                  View Profile
+                </a>
+              )}
+            </div>
+          </div>
+          {data.platform === 'twitter' && (
+            <button
+              onClick={syncTwitter}
+              disabled={syncing}
+              className="px-4 py-2 bg-accent-red text-white text-sm font-medium rounded-lg hover:bg-accent-red-hover disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {syncing ? 'Syncing...' : 'Sync from Twitter'}
+            </button>
           )}
         </div>
       </div>
+
+      {toast && (
+        <div className={`px-4 py-3 rounded-lg text-sm ${toast.startsWith('Error') || toast.startsWith('Sync failed') ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+          {toast}
+        </div>
+      )}
 
       <div className="bg-bg-card border border-border rounded-lg">
         <div className="p-4 border-b border-border">
