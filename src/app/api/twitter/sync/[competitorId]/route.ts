@@ -55,7 +55,7 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
 
     // Step 1: Get user ID from screen name
     const userData = await twitterFetch(`/user?username=${encodeURIComponent(username)}`)
-    const userId = userData?.result?.rest_id
+    const userId = userData?.result?.data?.user?.result?.rest_id
     if (!userId) {
       return NextResponse.json({ error: `Could not find Twitter user: @${username}` }, { status: 404 })
     }
@@ -64,7 +64,7 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
     const tweetsData = await twitterFetch(`/user-tweets?user=${userId}&count=20`)
 
     // Parse tweet entries from timeline instructions
-    const instructions = tweetsData?.result?.timeline_v2?.timeline?.instructions || []
+    const instructions = tweetsData?.result?.timeline?.instructions || []
     const addEntries = instructions.find((i: any) => i.type === 'TimelineAddEntries')
     const entries = addEntries?.entries || []
 
