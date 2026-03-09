@@ -40,7 +40,7 @@ export default function ClientDetail() {
           </div>
           <h1 className="text-2xl font-bold text-white">{client.name}</h1>
           <span className="text-xs text-neutral-500">
-            {client.vertical === 'trading_platform' ? 'Trading Platform' : 'Gaming / Web3'}
+            {client.vertical === 'trading_platform' ? 'Trading Platform' : client.vertical === 'ai_trading' ? 'AI Trading' : 'Gaming / Web3'}
           </span>
         </div>
         <Link
@@ -51,28 +51,38 @@ export default function ClientDetail() {
         </Link>
       </div>
 
-      {client.vertical === 'trading_platform' && latest ? (
+      {(client.vertical === 'trading_platform' || client.vertical === 'ai_trading') && latest ? (
         <>
-          <div className="grid grid-cols-4 gap-4">
+          <div className={`grid gap-4 ${client.vertical === 'ai_trading' ? 'grid-cols-2' : 'grid-cols-4'}`}>
             <MetricCard
               label="Onboarded Users"
               value={latest.onboarded_users?.toLocaleString()}
               change={prev ? getChange(latest.onboarded_users, prev.onboarded_users) : undefined}
             />
-            <MetricCard
-              label="Day 1 Retention"
-              value={`${latest.retention_day1}%`}
-              change={prev ? getChange(latest.retention_day1, prev.retention_day1) : undefined}
-            />
-            <MetricCard
-              label="Day 7 Retention"
-              value={`${latest.retention_day7}%`}
-              change={prev ? getChange(latest.retention_day7, prev.retention_day7) : undefined}
-            />
-            <MetricCard
-              label="Referral Source"
-              value={latest.referral_source || 'N/A'}
-            />
+            {client.vertical === 'ai_trading' ? (
+              <MetricCard
+                label="Deposits"
+                value={latest.deposits?.toLocaleString()}
+                change={prev ? getChange(latest.deposits, prev.deposits) : undefined}
+              />
+            ) : (
+              <>
+                <MetricCard
+                  label="Day 1 Retention"
+                  value={`${latest.retention_day1}%`}
+                  change={prev ? getChange(latest.retention_day1, prev.retention_day1) : undefined}
+                />
+                <MetricCard
+                  label="Day 7 Retention"
+                  value={`${latest.retention_day7}%`}
+                  change={prev ? getChange(latest.retention_day7, prev.retention_day7) : undefined}
+                />
+                <MetricCard
+                  label="Referral Source"
+                  value={latest.referral_source || 'N/A'}
+                />
+              </>
+            )}
           </div>
 
           {/* Volume Chart */}
