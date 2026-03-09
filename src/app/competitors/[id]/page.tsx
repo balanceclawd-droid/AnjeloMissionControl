@@ -72,9 +72,14 @@ export default function CompetitorDetail() {
       key: 'engagement_score',
       label: 'Score',
       render: (row: any) => (
-        <span className={`font-semibold ${row.engagement_score >= 80 ? 'text-green-400' : row.engagement_score >= 50 ? 'text-yellow-400' : 'text-neutral-400'}`}>
-          {row.engagement_score}
-        </span>
+        <div className="flex flex-col gap-0.5">
+          <span className={`font-semibold ${row.engagement_score >= 80 ? 'text-green-400' : row.engagement_score >= 50 ? 'text-yellow-400' : 'text-neutral-400'}`}>
+            {row.engagement_score}
+          </span>
+          {row.conversation_depth > 0 && (
+            <span className="text-xs text-blue-400">💬 {row.conversation_depth}</span>
+          )}
+        </div>
       )
     },
     {
