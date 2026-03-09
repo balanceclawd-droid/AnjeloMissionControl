@@ -53,18 +53,27 @@ export default function ClientDetail() {
 
       {(client.vertical === 'trading_platform' || client.vertical === 'ai_trading') && latest ? (
         <>
-          <div className={`grid gap-4 ${client.vertical === 'ai_trading' ? 'grid-cols-2' : 'grid-cols-4'}`}>
+          <div className={`grid gap-4 ${client.vertical === 'ai_trading' ? 'grid-cols-3' : 'grid-cols-4'}`}>
             <MetricCard
               label="Onboarded Users"
               value={latest.onboarded_users?.toLocaleString()}
               change={prev ? getChange(latest.onboarded_users, prev.onboarded_users) : undefined}
             />
             {client.vertical === 'ai_trading' ? (
-              <MetricCard
-                label="Deposits"
-                value={latest.deposits?.toLocaleString()}
-                change={prev ? getChange(latest.deposits, prev.deposits) : undefined}
-              />
+              <>
+                <MetricCard
+                  label="Deposits"
+                  value={latest.deposits?.toLocaleString()}
+                  change={prev ? getChange(latest.deposits, prev.deposits) : undefined}
+                />
+                <MetricCard
+                  label="Conversion Rate"
+                  value={latest.onboarded_users && latest.deposits ? `${((latest.deposits / latest.onboarded_users) * 100).toFixed(1)}%` : 'N/A'}
+                  change={prev?.onboarded_users && prev?.deposits && latest.onboarded_users && latest.deposits
+                    ? getChange((latest.deposits / latest.onboarded_users) * 100, (prev.deposits / prev.onboarded_users) * 100)
+                    : undefined}
+                />
+              </>
             ) : (
               <>
                 <MetricCard
