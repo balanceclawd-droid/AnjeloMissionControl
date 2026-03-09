@@ -7,6 +7,7 @@ const VERTICAL_LABELS: Record<string, string> = {
   trading_platform: 'Trading Platform',
   gaming_web3: 'Gaming / Web3',
   ai_trading: 'AI Trading',
+  cex: 'CEX / Exchange',
   defi: 'DeFi',
   nft: 'NFT',
   social: 'Social',
@@ -157,6 +158,7 @@ export default function ClientsPage() {
                 <option value="trading_platform">Trading Platform</option>
                 <option value="gaming_web3">Gaming / Web3</option>
                 <option value="ai_trading">AI Trading</option>
+                <option value="cex">CEX / Exchange</option>
                 <option value="defi">DeFi</option>
                 <option value="nft">NFT</option>
                 <option value="social">Social</option>

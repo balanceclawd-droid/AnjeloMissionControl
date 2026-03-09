@@ -108,11 +108,24 @@ function ClientPerformanceCard({ client }: { client: any }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="font-semibold text-white">{client.name}</h3>
-          <span className="text-xs text-neutral-500">{client.vertical === 'trading_platform' ? 'Trading Platform' : 'Gaming / Web3'}</span>
+          <span className="text-xs text-neutral-500">
+            {client.vertical === 'trading_platform' ? 'Trading Platform' : client.vertical === 'ai_trading' ? 'AI Trading' : client.vertical === 'cex' ? 'CEX / Exchange' : 'Gaming / Web3'}
+          </span>
         </div>
         <span className="text-xs text-neutral-600">{client.latest_metric?.week_ending || 'No data'}</span>
       </div>
-      {client.vertical === 'trading_platform' && latest ? (
+      {client.vertical === 'cex' && latest ? (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-xs text-neutral-500">Volume</p>
+            <p className="text-lg font-semibold text-white">${(latest.volume / 1000000).toFixed(2)}M</p>
+          </div>
+          <div>
+            <p className="text-xs text-neutral-500">Users</p>
+            <p className="text-lg font-semibold text-white">{latest.onboarded_users?.toLocaleString() || 'TBD'}</p>
+          </div>
+        </div>
+      ) : client.vertical === 'ai_trading' && latest ? (
         <div className="grid grid-cols-3 gap-3">
           <div>
             <p className="text-xs text-neutral-500">Users</p>
@@ -120,14 +133,15 @@ function ClientPerformanceCard({ client }: { client: any }) {
             {prev && <TrendIndicator current={latest.onboarded_users} previous={prev.onboarded_users} />}
           </div>
           <div>
-            <p className="text-xs text-neutral-500">D1 Retention</p>
-            <p className="text-lg font-semibold text-white">{latest.retention_day1}%</p>
-            {prev && <TrendIndicator current={latest.retention_day1} previous={prev.retention_day1} />}
+            <p className="text-xs text-neutral-500">Deposits</p>
+            <p className="text-lg font-semibold text-white">{latest.deposits?.toLocaleString()}</p>
+            {prev && <TrendIndicator current={latest.deposits} previous={prev.deposits} />}
           </div>
           <div>
-            <p className="text-xs text-neutral-500">D7 Retention</p>
-            <p className="text-lg font-semibold text-white">{latest.retention_day7}%</p>
-            {prev && <TrendIndicator current={latest.retention_day7} previous={prev.retention_day7} />}
+            <p className="text-xs text-neutral-500">Conv. Rate</p>
+            <p className="text-lg font-semibold text-white">
+              {latest.onboarded_users && latest.deposits ? `${((latest.deposits / latest.onboarded_users) * 100).toFixed(1)}%` : 'N/A'}
+            </p>
           </div>
         </div>
       ) : client.vertical === 'gaming_web3' && latest ? (
