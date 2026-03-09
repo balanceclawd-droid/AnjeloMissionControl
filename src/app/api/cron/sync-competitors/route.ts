@@ -27,9 +27,9 @@ function extractUsername(accountUrl: string | null, name: string): string {
   return name.replace(/^@/, '')
 }
 
-function calculateEngagementScores(tweets: { likes: number; retweets: number; replies: number }[]): number[] {
+function calculateEngagementScores(tweets: { likes: number; retweets: number; replies: number; bookmarks: number; quotes: number }[]): number[] {
   if (tweets.length === 0) return []
-  const rawScores = tweets.map(t => t.likes * 2 + t.retweets * 3 + t.replies)
+  const rawScores = tweets.map(t => t.likes * 2 + t.retweets * 3 + t.replies * 1 + t.bookmarks * 4 + t.quotes * 3)
   const maxRaw = Math.max(...rawScores)
   if (maxRaw === 0) return rawScores.map(() => 0)
   return rawScores.map(s => Math.min(100, Math.round((s / maxRaw) * 100)))
@@ -61,6 +61,8 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
         likes: legacy.favorite_count || 0,
         retweets: legacy.retweet_count || 0,
         replies: legacy.reply_count || 0,
+        bookmarks: legacy.bookmark_count || 0,
+        quotes: legacy.quote_count || 0,
       }
     }).filter((t: any) => t.id_str && t.full_text)
 
