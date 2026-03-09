@@ -29,7 +29,7 @@ function extractUsername(competitor: { account_url: string | null; name: string 
 
 function calculateEngagementScores(tweets: { likes: number; retweets: number; replies: number; bookmarks: number; quotes: number }[]): number[] {
   if (tweets.length === 0) return []
-  const rawScores = tweets.map(t => t.likes * 2 + t.retweets * 3 + t.replies * 1 + t.bookmarks * 4 + t.quotes * 3)
+  const rawScores = tweets.map(t => t.likes * 2 + t.retweets * 3 + t.replies * 1 + t.bookmarks * 4 + t.quotes * 2)
   const maxRaw = Math.max(...rawScores)
   if (maxRaw === 0) return rawScores.map(() => 0)
   return rawScores.map(s => Math.min(100, Math.round((s / maxRaw) * 100)))
@@ -102,6 +102,9 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
       structure: null,
       flagged_as_pattern: false,
       twitter_post_id: tweet.id_str,
+      bookmark_count: tweet.bookmarks,
+      quote_count: tweet.quotes,
+      conversation_depth: tweet.replies + tweet.quotes,
     }))
 
     let synced = 0
@@ -114,7 +117,18 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
         .eq('twitter_post_id', post.twitter_post_id)
         .maybeSingle()
 
-      if (!existing) {
+      if (existing) {
+        const { error: updateError } = await supabase
+          .from('competitive_posts')
+          .update({
+            engagement_score: post.engagement_score,
+            bookmark_count: post.bookmark_count,
+            quote_count: post.quote_count,
+            conversation_depth: post.conversation_depth,
+          })
+          .eq('id', existing.id)
+        if (!updateError) synced++
+      } else {
         const { error: insertError } = await supabase
           .from('competitive_posts')
           .insert(post)

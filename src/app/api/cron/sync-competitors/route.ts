@@ -29,7 +29,7 @@ function extractUsername(accountUrl: string | null, name: string): string {
 
 function calculateEngagementScores(tweets: { likes: number; retweets: number; replies: number; bookmarks: number; quotes: number }[]): number[] {
   if (tweets.length === 0) return []
-  const rawScores = tweets.map(t => t.likes * 2 + t.retweets * 3 + t.replies * 1 + t.bookmarks * 4 + t.quotes * 3)
+  const rawScores = tweets.map(t => t.likes * 2 + t.retweets * 3 + t.replies * 1 + t.bookmarks * 4 + t.quotes * 2)
   const maxRaw = Math.max(...rawScores)
   if (maxRaw === 0) return rawScores.map(() => 0)
   return rawScores.map(s => Math.min(100, Math.round((s / maxRaw) * 100)))
@@ -78,9 +78,21 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
         .eq('twitter_post_id', tweet.id_str)
         .maybeSingle()
 
-      if (!existing) {
+      if (existing) {
+        const { error } = await supabase
+          .from('competitive_posts')
+          .update({
+            engagement_score: scores[i],
+            bookmark_count: tweet.bookmarks,
+            quote_count: tweet.quotes,
+            conversation_depth: tweet.replies + tweet.quotes,
+          })
+          .eq('id', existing.id)
+        if (!error) synced++
+      } else {
         const { error } = await supabase.from('competitive_posts').insert({
           competitor_id: competitor.id,
+          platform: 'twitter',
           content: tweet.full_text,
           posted_at: new Date(tweet.created_at).toISOString(),
           engagement_score: scores[i],
@@ -88,6 +100,9 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
           structure: null,
           flagged_as_pattern: false,
           twitter_post_id: tweet.id_str,
+          bookmark_count: tweet.bookmarks,
+          quote_count: tweet.quotes,
+          conversation_depth: tweet.replies + tweet.quotes,
         })
         if (!error) synced++
       }
