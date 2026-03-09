@@ -92,6 +92,7 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
     // Step 3: Upsert posts into competitive_posts
     const postsToInsert = tweets.map((tweet: any, i: number) => ({
       competitor_id: competitor.id,
+      platform: 'twitter',
       content: tweet.full_text,
       posted_at: new Date(tweet.created_at).toISOString(),
       engagement_score: scores[i],
