@@ -40,7 +40,7 @@ export default function ClientDetail() {
           </div>
           <h1 className="text-2xl font-bold text-white">{client.name}</h1>
           <span className="text-xs text-neutral-500">
-            {client.vertical === 'trading_platform' ? 'Trading Platform' : client.vertical === 'ai_trading' ? 'AI Trading' : 'Gaming / Web3'}
+            {client.vertical === 'trading_platform' ? 'Trading Platform' : client.vertical === 'ai_trading' ? 'AI Trading' : client.vertical === 'cex' ? 'CEX / Exchange' : 'Gaming / Web3'}
           </span>
         </div>
         <Link
@@ -51,78 +51,68 @@ export default function ClientDetail() {
         </Link>
       </div>
 
-      {(client.vertical === 'trading_platform' || client.vertical === 'ai_trading') && latest ? (
+      {client.vertical === 'ai_trading' && latest ? (
         <>
-          <div className={`grid gap-4 ${client.vertical === 'ai_trading' ? 'grid-cols-3' : 'grid-cols-4'}`}>
+          <div className="grid grid-cols-3 gap-4">
             <MetricCard
               label="Onboarded Users"
               value={latest.onboarded_users?.toLocaleString()}
               change={prev ? getChange(latest.onboarded_users, prev.onboarded_users) : undefined}
             />
-            {client.vertical === 'ai_trading' ? (
-              <>
-                <MetricCard
-                  label="Deposits"
-                  value={latest.deposits?.toLocaleString()}
-                  change={prev ? getChange(latest.deposits, prev.deposits) : undefined}
-                />
-                <MetricCard
-                  label="Conversion Rate"
-                  value={latest.onboarded_users && latest.deposits ? `${((latest.deposits / latest.onboarded_users) * 100).toFixed(1)}%` : 'N/A'}
-                  change={prev?.onboarded_users && prev?.deposits && latest.onboarded_users && latest.deposits
-                    ? getChange((latest.deposits / latest.onboarded_users) * 100, (prev.deposits / prev.onboarded_users) * 100)
-                    : undefined}
-                />
-              </>
-            ) : (
-              <>
-                <MetricCard
-                  label="Day 1 Retention"
-                  value={`${latest.retention_day1}%`}
-                  change={prev ? getChange(latest.retention_day1, prev.retention_day1) : undefined}
-                />
-                <MetricCard
-                  label="Day 7 Retention"
-                  value={`${latest.retention_day7}%`}
-                  change={prev ? getChange(latest.retention_day7, prev.retention_day7) : undefined}
-                />
-                <MetricCard
-                  label="Referral Source"
-                  value={latest.referral_source || 'N/A'}
-                />
-              </>
-            )}
+            <MetricCard
+              label="Deposits"
+              value={latest.deposits?.toLocaleString()}
+              change={prev ? getChange(latest.deposits, prev.deposits) : undefined}
+            />
+            <MetricCard
+              label="Conversion Rate"
+              value={latest.onboarded_users && latest.deposits ? `${((latest.deposits / latest.onboarded_users) * 100).toFixed(1)}%` : 'N/A'}
+              change={prev?.onboarded_users && prev?.deposits && latest.onboarded_users && latest.deposits
+                ? getChange((latest.deposits / latest.onboarded_users) * 100, (prev.deposits / prev.onboarded_users) * 100)
+                : undefined}
+            />
           </div>
-
-          {/* Volume Chart */}
-          <div className="bg-bg-card border border-border rounded-lg p-6">
-            <h3 className="text-sm font-medium text-white mb-4">Daily Volume (Latest Week)</h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={latest.daily_volume ? Object.entries(latest.daily_volume).map(([day, vol]) => ({ day: day.charAt(0).toUpperCase() + day.slice(1), volume: vol })) : []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                <XAxis dataKey="day" stroke="#666" fontSize={12} />
-                <YAxis stroke="#666" fontSize={12} tickFormatter={(v: number) => `$${(v / 1000000).toFixed(1)}M`} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px', fontSize: '12px' }}
-                  formatter={(value: number) => [`$${(value / 1000000).toFixed(2)}M`, 'Volume']}
-                />
-                <Bar dataKey="volume" fill="#CC0000" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* User Trend */}
           {metrics.length > 1 && (
             <div className="bg-bg-card border border-border rounded-lg p-6">
-              <h3 className="text-sm font-medium text-white mb-4">Onboarded Users Trend</h3>
+              <h3 className="text-sm font-medium text-white mb-4">Users & Deposits Trend</h3>
               <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={metrics.map(m => ({ week: m.week_ending, users: m.data.onboarded_users }))}>
+                <LineChart data={metrics.map(m => ({ week: m.week_ending, users: m.data.onboarded_users, deposits: m.data.deposits }))}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#222" />
                   <XAxis dataKey="week" stroke="#666" fontSize={12} />
                   <YAxis stroke="#666" fontSize={12} />
                   <Tooltip contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px', fontSize: '12px' }} />
-                  <Line type="monotone" dataKey="users" stroke="#CC0000" strokeWidth={2} dot={{ fill: '#CC0000' }} />
+                  <Line type="monotone" dataKey="users" stroke="#CC0000" strokeWidth={2} dot={{ fill: '#CC0000' }} name="Users" />
+                  <Line type="monotone" dataKey="deposits" stroke="#22c55e" strokeWidth={2} dot={{ fill: '#22c55e' }} name="Deposits" />
                 </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </>
+      ) : client.vertical === 'cex' && latest ? (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <MetricCard
+              label="Weekly Volume"
+              value={latest.volume ? `$${latest.volume.toLocaleString()}` : 'N/A'}
+              change={prev?.volume ? getChange(latest.volume, prev.volume) : undefined}
+            />
+            <MetricCard
+              label="Onboarded Users"
+              value={latest.onboarded_users ? latest.onboarded_users.toLocaleString() : 'TBD'}
+              change={prev?.onboarded_users ? getChange(latest.onboarded_users, prev.onboarded_users) : undefined}
+            />
+          </div>
+          {metrics.length > 1 && (
+            <div className="bg-bg-card border border-border rounded-lg p-6">
+              <h3 className="text-sm font-medium text-white mb-4">Weekly Volume Trend</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={metrics.map(m => ({ week: m.week_ending, volume: m.data.volume }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                  <XAxis dataKey="week" stroke="#666" fontSize={12} />
+                  <YAxis stroke="#666" fontSize={12} tickFormatter={(v: number) => `$${(v / 1000000).toFixed(1)}M`} />
+                  <Tooltip contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px', fontSize: '12px' }} formatter={(value: number) => [`$${(value / 1000000).toFixed(2)}M`, 'Volume']} />
+                  <Bar dataKey="volume" fill="#CC0000" radius={[4, 4, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
           )}
@@ -230,13 +220,7 @@ export default function ClientDetail() {
         </div>
       )}
 
-      {/* Notes from latest */}
-      {latest?.notes && (
-        <div className="bg-bg-card border border-border rounded-lg p-5">
-          <h3 className="text-sm font-medium text-white mb-2">Latest Notes</h3>
-          <p className="text-sm text-neutral-400">{latest.notes}</p>
-        </div>
-      )}
+
     </div>
   )
 }
