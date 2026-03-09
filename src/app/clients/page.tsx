@@ -3,14 +3,28 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import DataTable from '@/components/DataTable'
 
+const VERTICAL_LABELS: Record<string, string> = {
+  trading_platform: 'Trading Platform',
+  gaming_web3: 'Gaming / Web3',
+  ai_trading: 'AI Trading',
+  defi: 'DeFi',
+  nft: 'NFT',
+  social: 'Social',
+  other: 'Other',
+}
+
 export default function ClientsPage() {
   const [clients, setClients] = useState<any[]>([])
   const [showForm, setShowForm] = useState(false)
+  const [activeTab, setActiveTab] = useState<string>('all')
   const [form, setForm] = useState({ name: '', vertical: 'trading_platform' })
 
   useEffect(() => {
     fetch('/api/clients').then(r => r.json()).then(setClients)
   }, [])
+
+  const filteredClients = activeTab === 'all' ? clients : clients.filter(c => c.vertical === activeTab)
+  const verticals = ['all', ...Array.from(new Set(clients.map(c => c.vertical)))]
 
   const addClient = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,7 +66,7 @@ export default function ClientsPage() {
       label: 'Vertical',
       render: (row: any) => (
         <span className="text-xs bg-neutral-800 px-2 py-1 rounded">
-          {row.vertical === 'trading_platform' ? 'Trading Platform' : 'Gaming / Web3'}
+          {VERTICAL_LABELS[row.vertical] || row.vertical}
         </span>
       )
     },
@@ -105,6 +119,20 @@ export default function ClientsPage() {
         </button>
       </div>
 
+      <div className="flex gap-1 bg-neutral-900 border border-border rounded-lg p-1 w-fit flex-wrap">
+        {verticals.map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md capitalize transition-colors ${
+              activeTab === tab ? 'bg-accent-red text-white' : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            {tab === 'all' ? `All (${clients.length})` : `${VERTICAL_LABELS[tab] || tab} (${clients.filter(c => c.vertical === tab).length})`}
+          </button>
+        ))}
+      </div>
+
       {showForm && (
         <form onSubmit={addClient} className="bg-bg-card border border-border rounded-lg p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -128,6 +156,11 @@ export default function ClientsPage() {
               >
                 <option value="trading_platform">Trading Platform</option>
                 <option value="gaming_web3">Gaming / Web3</option>
+                <option value="ai_trading">AI Trading</option>
+                <option value="defi">DeFi</option>
+                <option value="nft">NFT</option>
+                <option value="social">Social</option>
+                <option value="other">Other</option>
               </select>
             </div>
           </div>
@@ -138,7 +171,7 @@ export default function ClientsPage() {
       )}
 
       <div className="bg-bg-card border border-border rounded-lg">
-        <DataTable columns={columns} data={clients} />
+        <DataTable columns={columns} data={filteredClients} />
       </div>
     </div>
   )
