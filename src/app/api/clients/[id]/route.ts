@@ -9,7 +9,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .single()
 
   if (error) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  return NextResponse.json(client)
+  return NextResponse.json(client, { headers: { 'Cache-Control': 'no-store' } })
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
