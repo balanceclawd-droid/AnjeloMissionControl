@@ -162,19 +162,30 @@ function ClientPerformanceCard({ client }: { client: any }) {
             )
           })}
         </div>
-      ) : client.vertical === 'gaming_web3' && client.twitter_snapshots?.length ? (
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-xs text-neutral-500">Twitter Followers</p>
-            <p className="text-lg font-semibold text-white">{client.twitter_snapshots[0].followers_count.toLocaleString()}</p>
-            {client.twitter_snapshots[1] && (
-              <TrendIndicator current={client.twitter_snapshots[0].followers_count} previous={client.twitter_snapshots[1].followers_count} />
-            )}
-          </div>
-          <div>
-            <p className="text-xs text-neutral-500">As of</p>
-            <p className="text-sm text-neutral-300">{client.twitter_snapshots[0].snapshot_date}</p>
-          </div>
+      ) : client.vertical === 'gaming_web3' && (client.twitter_snapshots?.length || latest) ? (
+        <div className="grid grid-cols-3 gap-3">
+          {client.twitter_snapshots?.length ? (
+            <div>
+              <p className="text-xs text-neutral-500">Twitter</p>
+              <p className="text-lg font-semibold text-white">{client.twitter_snapshots[0].followers_count.toLocaleString()}</p>
+              {client.twitter_snapshots[1] && (
+                <TrendIndicator current={client.twitter_snapshots[0].followers_count} previous={client.twitter_snapshots[1].followers_count} />
+              )}
+            </div>
+          ) : null}
+          {latest?.total_signups != null ? (
+            <div>
+              <p className="text-xs text-neutral-500">Signups</p>
+              <p className="text-lg font-semibold text-white">{latest.total_signups.toLocaleString()}</p>
+              {prev?.total_signups && <TrendIndicator current={latest.total_signups} previous={prev.total_signups} />}
+            </div>
+          ) : null}
+          {latest?.avg_daily_signups != null ? (
+            <div>
+              <p className="text-xs text-neutral-500">Avg/Day</p>
+              <p className="text-lg font-semibold text-white">{latest.avg_daily_signups}</p>
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="text-sm text-neutral-600">No metrics submitted yet</p>
