@@ -169,6 +169,34 @@ export default function ClientDetail() {
             </div>
           )}
         </>
+      ) : client.vertical === 'gaming_web3' && latest?.total_signups != null ? (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <MetricCard
+              label="Total Signups"
+              value={latest.total_signups?.toLocaleString()}
+              change={prev?.total_signups ? getChange(latest.total_signups, prev.total_signups) : undefined}
+            />
+            <MetricCard
+              label="Avg Daily Signups"
+              value={latest.avg_daily_signups?.toString()}
+            />
+          </div>
+          {metrics.length > 1 && (
+            <div className="bg-bg-card border border-border rounded-lg p-6">
+              <h3 className="text-sm font-medium text-white mb-4">Signup Growth Trend</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={metrics.map(m => ({ week: m.week_ending, signups: m.data.total_signups }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                  <XAxis dataKey="week" stroke="#666" fontSize={12} />
+                  <YAxis stroke="#666" fontSize={12} />
+                  <Tooltip contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px', fontSize: '12px' }} />
+                  <Line type="monotone" dataKey="signups" stroke="#CC0000" strokeWidth={2} dot={{ fill: '#CC0000' }} name="Signups" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </>
       ) : client.vertical === 'gaming_web3' && latest ? (
         <>
           <div className="grid grid-cols-4 gap-4">
