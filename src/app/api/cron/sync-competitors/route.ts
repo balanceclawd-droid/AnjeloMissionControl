@@ -174,5 +174,231 @@ export async function GET(req: NextRequest) {
 
   console.log(`[Cron] Took ${clientSnapshots} client Twitter snapshots`)
 
-  return NextResponse.json({ totalSynced, results, clientSnapshots })
+  // ── Auto-detect engagement spikes & patterns ──
+  let alertsCreated = 0
+  let patternsCreated = 0
+
+  try {
+    // 1. ENGAGEMENT SPIKE ALERTS — any post scoring 80+ creates an alert
+    const { data: hotPosts } = await supabase
+      .from('competitive_posts')
+      .select('*, competitors(name, niche)')
+      .gte('engagement_score', 80)
+      .gte('posted_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()) // Last 48h only
+
+    if (hotPosts && hotPosts.length > 0) {
+      for (const post of hotPosts) {
+        // Check if alert already exists for this post
+        const { data: existing } = await supabase
+          .from('alerts')
+          .select('id')
+          .eq('alert_type', 'engagement_spike')
+          .like('message', `%${post.twitter_post_id}%`)
+          .limit(1)
+
+        if (!existing || existing.length === 0) {
+          const preview = post.content?.substring(0, 80) || 'No content'
+          await supabase.from('alerts').insert({
+            alert_type: 'engagement_spike',
+            niche: post.competitors?.niche || null,
+            severity: post.engagement_score === 100 ? 'critical' : 'high',
+            message: `🔥 ${post.competitors?.name}: Score ${post.engagement_score}/100 — "${preview}..." [${post.twitter_post_id}]`,
+            dismissed: false,
+          })
+          alertsCreated++
+        }
+      }
+    }
+
+    // 2. SILENCE ALERTS — competitor hasn't posted in 5+ days
+    if (competitors) {
+      for (const comp of competitors) {
+        const { data: recentPosts } = await supabase
+          .from('competitive_posts')
+          .select('posted_at')
+          .eq('competitor_id', comp.id)
+          .order('posted_at', { ascending: false })
+          .limit(1)
+
+        if (recentPosts && recentPosts.length > 0) {
+          const lastPost = new Date(recentPosts[0].posted_at)
+          const daysSilent = (Date.now() - lastPost.getTime()) / (1000 * 60 * 60 * 24)
+
+          if (daysSilent >= 5) {
+            const { data: existing } = await supabase
+              .from('alerts')
+              .select('id')
+              .eq('alert_type', 'competitor_silent')
+              .like('message', `%${comp.name}%`)
+              .eq('dismissed', false)
+              .limit(1)
+
+            if (!existing || existing.length === 0) {
+              await supabase.from('alerts').insert({
+                alert_type: 'competitor_silent',
+                niche: comp.niche || null,
+                severity: 'medium',
+                message: `🔇 ${comp.name} has been silent for ${Math.floor(daysSilent)} days. Last post: ${lastPost.toISOString().slice(0, 10)}`,
+                dismissed: false,
+              })
+              alertsCreated++
+            }
+          }
+        }
+      }
+    }
+
+    // 3. FOLLOWER DROP ALERTS — client lost 50+ followers in a day
+    if (clients) {
+      for (const client of clients) {
+        const { data: snaps } = await supabase
+          .from('client_twitter_snapshots')
+          .select('*')
+          .eq('client_id', client.id)
+          .order('snapshot_date', { ascending: false })
+          .limit(2)
+
+        if (snaps && snaps.length === 2) {
+          const drop = snaps[1].followers_count - snaps[0].followers_count
+          if (drop >= 50) {
+            await supabase.from('alerts').insert({
+              alert_type: 'follower_drop',
+              severity: drop >= 200 ? 'critical' : 'high',
+              message: `📉 ${client.name} lost ${drop} followers (${snaps[1].followers_count} → ${snaps[0].followers_count})`,
+              dismissed: false,
+            })
+            alertsCreated++
+          }
+        }
+      }
+    }
+
+    // 4. AUTO-PATTERN DETECTION — find hook types used by 2+ competitors with high engagement
+    const hookTypes = ['question', 'bold_claim', 'announcement', 'social_proof', 'meme', 'identity', 'thread', 'collaboration']
+    const structures = ['one-liner', 'short-form', 'thread', 'media-only', 'quote-tweet']
+
+    // Classify top posts by simple heuristics
+    const { data: topPosts } = await supabase
+      .from('competitive_posts')
+      .select('*, competitors(name, niche)')
+      .gte('engagement_score', 60)
+      .order('engagement_score', { ascending: false })
+      .limit(50)
+
+    if (topPosts && topPosts.length > 0) {
+      // Group by niche and detect common hooks
+      const nicheGroups: Record<string, any[]> = {}
+      for (const p of topPosts) {
+        const niche = p.competitors?.niche || 'Unknown'
+        if (!nicheGroups[niche]) nicheGroups[niche] = []
+        nicheGroups[niche].push(p)
+      }
+
+      for (const [niche, posts] of Object.entries(nicheGroups)) {
+        if (posts.length < 3) continue
+
+        // Detect question hooks
+        const questionPosts = posts.filter((p: any) => p.content?.includes('?'))
+        if (questionPosts.length >= 2) {
+          const avgScore = Math.round(questionPosts.reduce((s: number, p: any) => s + p.engagement_score, 0) / questionPosts.length)
+          const uniqueCompetitors = new Set(questionPosts.map((p: any) => p.competitors?.name)).size
+
+          if (uniqueCompetitors >= 2) {
+            const { data: existing } = await supabase
+              .from('patterns')
+              .select('id')
+              .eq('niche', niche)
+              .eq('hook_type', 'question')
+              .eq('status', 'emerging')
+              .limit(1)
+
+            if (!existing || existing.length === 0) {
+              await supabase.from('patterns').insert({
+                niche,
+                hook_type: 'question',
+                structure: 'short-form',
+                cta_type: 'engagement',
+                pattern_description: `${uniqueCompetitors} ${niche} competitors using question hooks with avg score ${avgScore}`,
+                post_ids: questionPosts.slice(0, 5).map((p: any) => p.id),
+                competitor_count: uniqueCompetitors,
+                avg_engagement_score: avgScore,
+                status: 'emerging',
+              })
+              patternsCreated++
+            }
+          }
+        }
+
+        // Detect media-heavy posts (short text = likely media-only)
+        const mediaPosts = posts.filter((p: any) => p.content && p.content.length < 50 && p.content.includes('http'))
+        if (mediaPosts.length >= 2) {
+          const avgScore = Math.round(mediaPosts.reduce((s: number, p: any) => s + p.engagement_score, 0) / mediaPosts.length)
+          const uniqueCompetitors = new Set(mediaPosts.map((p: any) => p.competitors?.name)).size
+
+          if (uniqueCompetitors >= 2) {
+            const { data: existing } = await supabase
+              .from('patterns')
+              .select('id')
+              .eq('niche', niche)
+              .eq('hook_type', 'media-only')
+              .eq('status', 'emerging')
+              .limit(1)
+
+            if (!existing || existing.length === 0) {
+              await supabase.from('patterns').insert({
+                niche,
+                hook_type: 'media-only',
+                structure: 'media-only',
+                cta_type: 'none',
+                pattern_description: `${uniqueCompetitors} ${niche} competitors getting high engagement with media-only posts (avg score ${avgScore})`,
+                post_ids: mediaPosts.slice(0, 5).map((p: any) => p.id),
+                competitor_count: uniqueCompetitors,
+                avg_engagement_score: avgScore,
+                status: 'emerging',
+              })
+              patternsCreated++
+            }
+          }
+        }
+
+        // Detect identity/bold claim posts (short, no links, high engagement)
+        const identityPosts = posts.filter((p: any) => p.content && p.content.length < 100 && !p.content.includes('http') && !p.content.includes('?'))
+        if (identityPosts.length >= 2) {
+          const avgScore = Math.round(identityPosts.reduce((s: number, p: any) => s + p.engagement_score, 0) / identityPosts.length)
+          const uniqueCompetitors = new Set(identityPosts.map((p: any) => p.competitors?.name)).size
+
+          if (uniqueCompetitors >= 2) {
+            const { data: existing } = await supabase
+              .from('patterns')
+              .select('id')
+              .eq('niche', niche)
+              .eq('hook_type', 'identity')
+              .eq('status', 'emerging')
+              .limit(1)
+
+            if (!existing || existing.length === 0) {
+              await supabase.from('patterns').insert({
+                niche,
+                hook_type: 'identity',
+                structure: 'one-liner',
+                cta_type: 'none',
+                pattern_description: `${uniqueCompetitors} ${niche} competitors using bold identity one-liners with avg score ${avgScore}`,
+                post_ids: identityPosts.slice(0, 5).map((p: any) => p.id),
+                competitor_count: uniqueCompetitors,
+                avg_engagement_score: avgScore,
+                status: 'emerging',
+              })
+              patternsCreated++
+            }
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error(`[Cron] Alert/pattern detection error:`, err.message)
+  }
+
+  console.log(`[Cron] Created ${alertsCreated} alerts, ${patternsCreated} patterns`)
+
+  return NextResponse.json({ totalSynced, results, clientSnapshots, alertsCreated, patternsCreated })
 }
