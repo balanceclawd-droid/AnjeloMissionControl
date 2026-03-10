@@ -15,19 +15,28 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const body = await req.json()
+  let body
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const { week_ending, metric_type, data } = body
   if (!week_ending || !metric_type || !data) {
     return NextResponse.json({ error: 'week_ending, metric_type, and data required' }, { status: 400 })
   }
 
+  const clientId = parseInt(params.id, 10)
+  if (isNaN(clientId)) {
+    return NextResponse.json({ error: 'Invalid client ID' }, { status: 400 })
+  }
+
+  let parsedData
+  try { parsedData = typeof data === 'string' ? JSON.parse(data) : data } catch { return NextResponse.json({ error: 'Invalid data JSON' }, { status: 400 }) }
+
   const { data: metric, error } = await supabase
     .from('weekly_metrics')
     .insert({
-      client_id: parseInt(params.id, 10),
+      client_id: clientId,
       week_ending,
       metric_type,
-      data: typeof data === 'string' ? JSON.parse(data) : data,
+      data: parsedData,
     })
     .select()
     .single()

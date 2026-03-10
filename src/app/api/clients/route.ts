@@ -14,7 +14,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  let body
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const { name, vertical } = body
   if (!name || !vertical) {
     return NextResponse.json({ error: 'Name and vertical required' }, { status: 400 })

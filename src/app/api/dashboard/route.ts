@@ -34,8 +34,8 @@ export async function GET() {
 
       return {
         ...client,
-        latest_metric: latestMetric ? { ...latestMetric, data: typeof latestMetric.data === 'string' ? JSON.parse(latestMetric.data) : latestMetric.data } : null,
-        prev_metric: prevMetric ? { ...prevMetric, data: typeof prevMetric.data === 'string' ? JSON.parse(prevMetric.data) : prevMetric.data } : null,
+        latest_metric: latestMetric ? (() => { try { return { ...latestMetric, data: typeof latestMetric.data === 'string' ? JSON.parse(latestMetric.data) : latestMetric.data } } catch { return latestMetric } })() : null,
+        prev_metric: prevMetric ? (() => { try { return { ...prevMetric, data: typeof prevMetric.data === 'string' ? JSON.parse(prevMetric.data) : prevMetric.data } } catch { return prevMetric } })() : null,
       }
     })
   )

@@ -16,12 +16,13 @@ const VERTICAL_LABELS: Record<string, string> = {
 
 export default function ClientsPage() {
   const [clients, setClients] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [activeTab, setActiveTab] = useState<string>('all')
   const [form, setForm] = useState({ name: '', vertical: 'trading_platform' })
 
   useEffect(() => {
-    fetch('/api/clients').then(r => r.json()).then(setClients)
+    fetch('/api/clients').then(r => r.json()).then(setClients).finally(() => setLoading(false))
   }, [])
 
   const filteredClients = activeTab === 'all' ? clients : clients.filter(c => c.vertical === activeTab)
@@ -173,7 +174,11 @@ export default function ClientsPage() {
       )}
 
       <div className="bg-bg-card border border-border rounded-lg">
-        <DataTable columns={columns} data={filteredClients} />
+        {loading ? (
+          <div className="flex justify-center py-8"><div className="h-6 w-6 border-2 border-neutral-600 border-t-white rounded-full animate-spin" /></div>
+        ) : (
+          <DataTable columns={columns} data={filteredClients} />
+        )}
       </div>
     </div>
   )

@@ -51,7 +51,59 @@ export default function ClientDetail() {
         </Link>
       </div>
 
-      {client.vertical === 'ai_trading' && latest ? (
+      {client.vertical === 'trading_platform' && latest ? (
+        <>
+          <div className="grid grid-cols-4 gap-4">
+            <MetricCard
+              label="Onboarded Users"
+              value={latest.onboarded_users?.toLocaleString()}
+              change={prev ? getChange(latest.onboarded_users, prev.onboarded_users) : undefined}
+            />
+            <MetricCard
+              label="Day 1 Retention"
+              value={latest.retention_day1 != null ? `${latest.retention_day1}%` : 'N/A'}
+              change={prev?.retention_day1 != null ? getChange(latest.retention_day1, prev.retention_day1) : undefined}
+            />
+            <MetricCard
+              label="Day 7 Retention"
+              value={latest.retention_day7 != null ? `${latest.retention_day7}%` : 'N/A'}
+              change={prev?.retention_day7 != null ? getChange(latest.retention_day7, prev.retention_day7) : undefined}
+            />
+            <MetricCard
+              label="Referral Source"
+              value={latest.referral_source || 'N/A'}
+            />
+          </div>
+          {latest.daily_volume && (
+            <div className="bg-bg-card border border-border rounded-lg p-6">
+              <h3 className="text-sm font-medium text-white mb-4">Daily Volume</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => ({ day: day.charAt(0).toUpperCase() + day.slice(1), volume: latest.daily_volume[day] || 0 }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                  <XAxis dataKey="day" stroke="#666" fontSize={12} />
+                  <YAxis stroke="#666" fontSize={12} />
+                  <Tooltip contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px', fontSize: '12px' }} />
+                  <Bar dataKey="volume" fill="#CC0000" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {metrics.length > 1 && (
+            <div className="bg-bg-card border border-border rounded-lg p-6">
+              <h3 className="text-sm font-medium text-white mb-4">User Trend</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={metrics.map(m => ({ week: m.week_ending, users: m.data.onboarded_users }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                  <XAxis dataKey="week" stroke="#666" fontSize={12} />
+                  <YAxis stroke="#666" fontSize={12} />
+                  <Tooltip contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px', fontSize: '12px' }} />
+                  <Line type="monotone" dataKey="users" stroke="#CC0000" strokeWidth={2} dot={{ fill: '#CC0000' }} name="Users" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </>
+      ) : client.vertical === 'ai_trading' && latest ? (
         <>
           <div className="grid grid-cols-3 gap-4">
             <MetricCard

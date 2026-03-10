@@ -28,7 +28,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  let body
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const {
     competitor_id, platform, post_url, content, posted_at,
     engagement_metrics, hook_type, hook_text, structure, cta_type,

@@ -75,7 +75,8 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
 
     // Extract tweet data
     const tweets = tweetEntries.map((entry: any) => {
-      const legacy = entry.content.itemContent.tweet_results.result.legacy
+      const legacy = entry.content?.itemContent?.tweet_results?.result?.legacy
+      if (!legacy) return null
       return {
         id_str: legacy.id_str,
         full_text: legacy.full_text,
@@ -86,7 +87,7 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
         bookmarks: legacy.bookmark_count || 0,
         quotes: legacy.quote_count || 0,
       }
-    }).filter((t: any) => t.id_str && t.full_text)
+    }).filter((t: any) => t && t.id_str && t.full_text)
 
     // Calculate engagement scores
     const scores = calculateEngagementScores(tweets)
@@ -109,30 +110,13 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
 
     let synced = 0
     for (const post of postsToInsert) {
-      // Check if this tweet already exists
-      const { data: existing } = await supabase
+      const { error } = await supabase
         .from('competitive_posts')
-        .select('id')
-        .eq('competitor_id', post.competitor_id)
-        .eq('twitter_post_id', post.twitter_post_id)
-        .maybeSingle()
-
-      if (existing) {
-        const { error: updateError } = await supabase
-          .from('competitive_posts')
-          .update({
-            engagement_score: post.engagement_score,
-            bookmark_count: post.bookmark_count,
-            quote_count: post.quote_count,
-            conversation_depth: post.conversation_depth,
-          })
-          .eq('id', existing.id)
-        if (!updateError) synced++
+        .upsert(post, { onConflict: 'competitor_id,twitter_post_id' })
+      if (error) {
+        console.error(`[Twitter Sync] competitive_posts upsert error:`, error.message)
       } else {
-        const { error: insertError } = await supabase
-          .from('competitive_posts')
-          .insert(post)
-        if (!insertError) synced++
+        synced++
       }
     }
 

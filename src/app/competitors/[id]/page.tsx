@@ -131,9 +131,9 @@ export default function CompetitorDetail() {
 
       <div className="bg-bg-card border border-border rounded-lg">
         <div className="p-4 border-b border-border">
-          <h2 className="text-sm font-medium text-white">Tracked Posts ({data.posts.length})</h2>
+          <h2 className="text-sm font-medium text-white">Tracked Posts ({data?.posts?.length ?? 0})</h2>
         </div>
-        <DataTable columns={columns} data={data.posts} />
+        <DataTable columns={columns} data={data?.posts ?? []} />
       </div>
     </div>
   )

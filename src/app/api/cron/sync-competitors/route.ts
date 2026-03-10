@@ -53,7 +53,8 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
     )
 
     const tweets = tweetEntries.map((entry: any) => {
-      const legacy = entry.content.itemContent.tweet_results.result.legacy
+      const legacy = entry.content?.itemContent?.tweet_results?.result?.legacy
+      if (!legacy) return null
       return {
         id_str: legacy.id_str,
         full_text: legacy.full_text,
@@ -64,47 +65,31 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
         bookmarks: legacy.bookmark_count || 0,
         quotes: legacy.quote_count || 0,
       }
-    }).filter((t: any) => t.id_str && t.full_text)
+    }).filter((t: any) => t && t.id_str && t.full_text)
 
     const scores = calculateEngagementScores(tweets)
     let synced = 0
 
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i]
-      const { data: existing } = await supabase
-        .from('competitive_posts')
-        .select('id')
-        .eq('competitor_id', competitor.id)
-        .eq('twitter_post_id', tweet.id_str)
-        .maybeSingle()
-
-      if (existing) {
-        const { error } = await supabase
-          .from('competitive_posts')
-          .update({
-            engagement_score: scores[i],
-            bookmark_count: tweet.bookmarks,
-            quote_count: tweet.quotes,
-            conversation_depth: tweet.replies + tweet.quotes,
-          })
-          .eq('id', existing.id)
-        if (!error) synced++
+      const { error } = await supabase.from('competitive_posts').upsert({
+        competitor_id: competitor.id,
+        platform: 'twitter',
+        content: tweet.full_text,
+        posted_at: new Date(tweet.created_at).toISOString(),
+        engagement_score: scores[i],
+        hook_type: null,
+        structure: null,
+        flagged_as_pattern: false,
+        twitter_post_id: tweet.id_str,
+        bookmark_count: tweet.bookmarks,
+        quote_count: tweet.quotes,
+        conversation_depth: tweet.replies + tweet.quotes,
+      }, { onConflict: 'competitor_id,twitter_post_id' })
+      if (error) {
+        console.error(`[Cron] competitive_posts upsert error for ${competitor.name}:`, error.message)
       } else {
-        const { error } = await supabase.from('competitive_posts').insert({
-          competitor_id: competitor.id,
-          platform: 'twitter',
-          content: tweet.full_text,
-          posted_at: new Date(tweet.created_at).toISOString(),
-          engagement_score: scores[i],
-          hook_type: null,
-          structure: null,
-          flagged_as_pattern: false,
-          twitter_post_id: tweet.id_str,
-          bookmark_count: tweet.bookmarks,
-          quote_count: tweet.quotes,
-          conversation_depth: tweet.replies + tweet.quotes,
-        })
-        if (!error) synced++
+        synced++
       }
     }
 
@@ -117,7 +102,7 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
 export async function GET(req: NextRequest) {
   // Verify cron secret
   const authHeader = req.headers.get('authorization')
-  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -160,16 +145,6 @@ export async function GET(req: NextRequest) {
   if (clients && clients.length > 0) {
     for (const client of clients) {
       try {
-        // Skip if snapshot already exists for today
-        const { data: existing } = await supabase
-          .from('client_twitter_snapshots')
-          .select('id')
-          .eq('client_id', client.id)
-          .eq('snapshot_date', today)
-          .maybeSingle()
-
-        if (existing) continue
-
         const username = extractUsername(client.twitter_url, client.name)
         const userData = await twitterFetch(`/user?username=${encodeURIComponent(username)}`)
         const legacy = userData?.result?.data?.user?.result?.legacy
@@ -178,14 +153,18 @@ export async function GET(req: NextRequest) {
           continue
         }
 
-        const { error: insertErr } = await supabase.from('client_twitter_snapshots').insert({
+        const { error: insertErr } = await supabase.from('client_twitter_snapshots').upsert({
           client_id: client.id,
           followers_count: legacy.followers_count ?? 0,
           tweet_count: legacy.statuses_count ?? 0,
           snapshot_date: today,
-        })
+        }, { onConflict: 'client_id,snapshot_date' })
 
-        if (!insertErr) clientSnapshots++
+        if (insertErr) {
+          console.error(`[Cron] client_twitter_snapshots upsert error for ${client.name}:`, insertErr.message)
+        } else {
+          clientSnapshots++
+        }
         await new Promise(r => setTimeout(r, 1000))
       } catch (err: any) {
         console.log(`[Cron] Client ${client.name} snapshot error: ${err.message}`)

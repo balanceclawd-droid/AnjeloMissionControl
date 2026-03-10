@@ -15,7 +15,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  const body = await req.json()
+  let body
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const updates: Record<string, any> = {}
   if (body.name !== undefined) updates.name = body.name
   if (body.vertical !== undefined) updates.vertical = body.vertical

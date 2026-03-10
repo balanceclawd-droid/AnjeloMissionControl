@@ -17,7 +17,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const body = await req.json()
+  let body
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const { id, dismissed } = body
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
 

@@ -22,11 +22,14 @@ export default function Dashboard() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, dismissed: true })
     })
-    setData((prev: any) => ({
-      ...prev,
-      alerts: prev.alerts.filter((a: any) => a.id !== id),
-      stats: { ...prev.stats, active_alerts: prev.stats.active_alerts - 1 }
-    }))
+    setData((prev: any) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        alerts: prev.alerts.filter((a: any) => a.id !== id),
+        stats: { ...prev.stats, active_alerts: prev.stats.active_alerts - 1 }
+      }
+    })
   }
 
   if (loading) return <div className="text-neutral-500">Loading...</div>
@@ -72,7 +75,7 @@ export default function Dashboard() {
             <h2 className="text-lg font-semibold text-white">Top Patterns</h2>
             <Link href="/patterns" className="text-xs text-accent-red hover:underline">View All</Link>
           </div>
-          {data.patterns.map((pattern: any) => (
+          {data.patterns?.map((pattern: any) => (
             <PatternCard key={pattern.id} pattern={pattern} />
           ))}
         </div>
@@ -167,6 +170,7 @@ function ClientPerformanceCard({ client }: { client: any }) {
 }
 
 function TrendIndicator({ current, previous }: { current: number; previous: number }) {
+  if (previous === 0) return null
   const change = Math.round(((current - previous) / previous) * 100)
   return (
     <span className={`text-xs font-medium ${change > 0 ? 'text-green-500' : change < 0 ? 'text-red-500' : 'text-neutral-500'}`}>

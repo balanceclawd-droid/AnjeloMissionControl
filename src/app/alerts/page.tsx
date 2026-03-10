@@ -4,12 +4,15 @@ import AlertCard from '@/components/AlertCard'
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [showDismissed, setShowDismissed] = useState(false)
 
   useEffect(() => {
+    setLoading(true)
     fetch(`/api/alerts?dismissed=${showDismissed}`)
       .then(r => r.json())
       .then(setAlerts)
+      .finally(() => setLoading(false))
   }, [showDismissed])
 
   const dismissAlert = async (id: number) => {
@@ -36,7 +39,9 @@ export default function AlertsPage() {
         </button>
       </div>
       <div className="space-y-3">
-        {alerts.length === 0 ? (
+        {loading ? (
+          <div className="flex justify-center py-8"><div className="h-6 w-6 border-2 border-neutral-600 border-t-white rounded-full animate-spin" /></div>
+        ) : alerts.length === 0 ? (
           <p className="text-neutral-600 text-sm py-8 text-center">No alerts to display</p>
         ) : (
           alerts.map(alert => (

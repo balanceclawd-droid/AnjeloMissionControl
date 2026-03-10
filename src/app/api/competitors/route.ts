@@ -12,7 +12,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  let body
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   const { name, niche, platform, account_url, tracked_type } = body
   if (!name || !niche || !platform) {
     return NextResponse.json({ error: 'Name, niche, and platform required' }, { status: 400 })

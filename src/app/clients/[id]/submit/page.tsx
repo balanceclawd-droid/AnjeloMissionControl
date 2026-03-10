@@ -29,7 +29,10 @@ export default function SubmitMetrics() {
   })
 
   useEffect(() => {
-    fetch(`/api/clients/${params.id}`).then(r => r.json()).then(setClient)
+    fetch(`/api/clients/${params.id}`)
+      .then(r => { if (!r.ok) throw new Error('Failed to load client'); return r.json() })
+      .then(setClient)
+      .catch(() => setError('Failed to load client data'))
     // Default to upcoming Sunday
     const now = new Date()
     const dayOfWeek = now.getDay()
@@ -77,6 +80,7 @@ export default function SubmitMetrics() {
     setSubmitting(false)
   }
 
+  if (!client && error) return <div className="text-red-500">{error}</div>
   if (!client) return <div className="text-neutral-500">Loading...</div>
 
   return (
