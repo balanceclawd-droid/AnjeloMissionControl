@@ -32,10 +32,23 @@ export async function GET() {
       const latestMetric = latestMetrics?.[0] || null
       const prevMetric = latestMetrics?.[1] || null
 
+      // For gaming clients with no weekly metrics, pull latest Twitter snapshot
+      let twitterSnapshot = null
+      if (client.vertical === 'gaming_web3' && !latestMetric && client.twitter_url) {
+        const { data: snapshots } = await supabase
+          .from('client_twitter_snapshots')
+          .select('*')
+          .eq('client_id', client.id)
+          .order('snapshot_date', { ascending: false })
+          .limit(2)
+        if (snapshots?.length) twitterSnapshot = snapshots
+      }
+
       return {
         ...client,
         latest_metric: latestMetric ? (() => { try { return { ...latestMetric, data: typeof latestMetric.data === 'string' ? JSON.parse(latestMetric.data) : latestMetric.data } } catch { return latestMetric } })() : null,
         prev_metric: prevMetric ? (() => { try { return { ...prevMetric, data: typeof prevMetric.data === 'string' ? JSON.parse(prevMetric.data) : prevMetric.data } } catch { return prevMetric } })() : null,
+        twitter_snapshots: twitterSnapshot,
       }
     })
   )
