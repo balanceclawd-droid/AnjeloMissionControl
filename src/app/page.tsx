@@ -147,21 +147,6 @@ function ClientPerformanceCard({ client }: { client: any }) {
             </p>
           </div>
         </div>
-      ) : client.vertical === 'gaming_web3' && latest ? (
-        <div className="grid grid-cols-4 gap-3">
-          {['twitter', 'tiktok', 'instagram', 'youtube'].map(platform => {
-            const d = latest[platform]
-            const p = prev?.[platform]
-            if (!d) return null
-            return (
-              <div key={platform}>
-                <p className="text-xs text-neutral-500 capitalize">{platform}</p>
-                <p className="text-lg font-semibold text-white">{(d.followers / 1000).toFixed(1)}k</p>
-                {p && <TrendIndicator current={d.followers} previous={p.followers} />}
-              </div>
-            )
-          })}
-        </div>
       ) : client.vertical === 'gaming_web3' && (client.twitter_snapshots?.length || latest) ? (
         <div className="grid grid-cols-3 gap-3">
           {client.twitter_snapshots?.length ? (
