@@ -12,13 +12,13 @@ export default function ClientDetail() {
   const [twitterStats, setTwitterStats] = useState<any>(null)
 
   useEffect(() => {
-    fetch(`/api/clients/${params.id}`).then(r => r.json()).then(c => {
+    fetch(`/api/clients/${params.id}?t=${Date.now()}`).then(r => r.json()).then(c => {
       setClient(c)
       if (c.twitter_url) {
-        fetch(`/api/clients/${params.id}/twitter-stats`).then(r => r.json()).then(setTwitterStats)
+        fetch(`/api/clients/${params.id}/twitter-stats?t=${Date.now()}`).then(r => r.json()).then(setTwitterStats)
       }
     })
-    fetch(`/api/clients/${params.id}/metrics`).then(r => r.json()).then(m => {
+    fetch(`/api/clients/${params.id}/metrics?t=${Date.now()}`).then(r => r.json()).then(m => {
       setMetrics(m.map((item: any) => ({ ...item, data: JSON.parse(item.data) })).reverse())
     })
   }, [params.id])
