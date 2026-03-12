@@ -38,20 +38,32 @@ function buildPatternDescription(input: {
   const structureLabel = formatLabel(structure)
   const cta = formatLabel(cta_type)
 
-  if (hook_type === 'question') {
-    return `${competitorCount} ${niche} competitors are using question-led ${structureLabel} posts to drive ${cta} behaviour. Avg engagement score: ${Math.round(avgScore)}.`
+  if (hook_type === 'community_bait') {
+    return `${competitorCount} ${niche} competitors are using conversation-bait ${structureLabel} posts to trigger ${cta}. Avg engagement score: ${Math.round(avgScore)}.`
   }
-  if (hook_type === 'social_proof') {
-    return `${competitorCount} ${niche} competitors are leaning on proof-based ${structureLabel} posts. These posts signal traction/results and average ${Math.round(avgScore)} engagement.`
+  if (hook_type === 'proof_of_results') {
+    return `${competitorCount} ${niche} competitors are leaning on proof/results-led ${structureLabel} posts. These signal traction and average ${Math.round(avgScore)} engagement.`
   }
-  if (hook_type === 'announcement') {
-    return `${competitorCount} ${niche} competitors are using launch/update style announcements with ${structureLabel} formatting. Avg engagement score: ${Math.round(avgScore)}.`
+  if (hook_type === 'launch_update') {
+    return `${competitorCount} ${niche} competitors are using launch/update style ${structureLabel} posts to push ${cta}. Avg engagement score: ${Math.round(avgScore)}.`
   }
-  if (hook_type === 'bold_claim') {
-    return `${competitorCount} ${niche} competitors are using strong opinion / bold-claim hooks in ${structureLabel} posts to push ${cta}. Avg engagement score: ${Math.round(avgScore)}.`
+  if (hook_type === 'bold_claim' || hook_type === 'hot_take') {
+    return `${competitorCount} ${niche} competitors are using opinionated ${structureLabel} posts to push ${cta}. Avg engagement score: ${Math.round(avgScore)}.`
   }
-  if (hook_type === 'identity') {
+  if (hook_type === 'identity_signal') {
     return `${competitorCount} ${niche} competitors are using identity/status signalling in ${structureLabel} posts. Avg engagement score: ${Math.round(avgScore)}.`
+  }
+  if (hook_type === 'educational_breakdown') {
+    return `${competitorCount} ${niche} competitors are using educational ${structureLabel} posts to drive ${cta}. Avg engagement score: ${Math.round(avgScore)}.`
+  }
+  if (hook_type === 'speculative_alpha') {
+    return `${competitorCount} ${niche} competitors are using alpha/speculation hooks in ${structureLabel} posts. Avg engagement score: ${Math.round(avgScore)}.`
+  }
+  if (hook_type === 'partnership_signal') {
+    return `${competitorCount} ${niche} competitors are using partnership/credibility signals in ${structureLabel} posts. Avg engagement score: ${Math.round(avgScore)}.`
+  }
+  if (hook_type === 'meme_humor') {
+    return `${competitorCount} ${niche} competitors are using humor/meme framing in ${structureLabel} posts. Avg engagement score: ${Math.round(avgScore)}.`
   }
 
   return `${competitorCount} ${niche} competitors are repeating a ${hook} + ${structureLabel} + ${cta} pattern. Avg engagement score: ${Math.round(avgScore)}.`
@@ -72,6 +84,10 @@ function isActionablePattern(input: {
   if (hook_type === 'statement' && avgScore < 55) return false
   if (hook_type === 'statement' && structure === 'short-form' && cta_type === 'link_click' && avgScore < 75) return false
   if (hook_type === 'statement' && structure === 'short-form' && cta_type === 'none') return false
+  if (hook_type === 'community_bait' && avgScore < 50) return false
+  if (hook_type === 'proof_of_results' && avgScore < 45) return false
+  if (hook_type === 'launch_update' && competitorCount < 2) return false
+  if (hook_type === 'meme_humor' && avgScore < 55) return false
 
   return true
 }
@@ -93,14 +109,16 @@ function inferHookType(content: string) {
   const lower = text.toLowerCase()
 
   if (!text) return null
-  if (text.includes('?')) return 'question'
-  if (/\b(breaking|just in|live now|launching|now live|introduced|announcing)\b/i.test(text)) return 'announcement'
-  if (/\b(why|how|what if|most people|nobody talks about|the truth about|reason #?\d+)\b/i.test(text)) return 'curiosity_gap'
-  if (/\b($\d|\d+[%x]|\d+[kmb]? users|\d+[kmb]? views|million|billion|top players|case study|proof)\b/i.test(lower)) return 'social_proof'
-  if (/\b(we are|we're|i am|i'm|built different|for the builders|for traders|for gamers|real ones)\b/i.test(lower)) return 'identity'
-  if (/\b(partner|collab|teaming up|working with|with @)\b/i.test(lower)) return 'collaboration'
-  if (/\b(read this|thread|🧵|1\/|1\)|here's)\b/i.test(lower)) return 'thread'
-  if (/\b(alpha|edge|win|secret|cheat code|unlock|dominate|faster|better)\b/i.test(lower)) return 'bold_claim'
+  if (/\b(partner|partnership|teaming up|working with|collab|collaboration|powered by|with @)\b/i.test(lower)) return 'partnership_signal'
+  if (/\b(breaking|just in|live now|launching|now live|introduced|announcing|rolled out|shipping|released|release)\b/i.test(text)) return 'launch_update'
+  if (/\b(case study|results|grew|growth|revenue|followers|users|signups|volume|proof|receipts|milestone|hit \d|crossed \d|top players)\b/i.test(lower)) return 'proof_of_results'
+  if (/\b(hot take|unpopular opinion|controversial|everyone is wrong|stop|nobody talks about|the truth about)\b/i.test(lower)) return 'hot_take'
+  if (/\b(alpha|edge|secret|cheat code|early|before everyone|signal|playbook|market is sleeping|underrated)\b/i.test(lower)) return 'speculative_alpha'
+  if (/\b(we are|we're|i am|i'm|built different|for the builders|for traders|for gamers|real ones|if you know you know)\b/i.test(lower)) return 'identity_signal'
+  if (/\b(why|how|what if|reason #?\d+|here'?s how|step by step|breakdown|explainer|guide)\b/i.test(lower)) return 'educational_breakdown'
+  if (/\b(reply|comment|what do you think|thoughts\??|agree\??|who else|which one|pick one)\b/i.test(lower) || text.includes('?')) return 'community_bait'
+  if (/\b(meme|lol|lmao|😂|😭|bro|nah|imagine)\b/i.test(lower)) return 'meme_humor'
+  if (/\b(win|dominate|faster|better|best|never|always|everybody|no one)\b/i.test(lower)) return 'bold_claim'
   return 'statement'
 }
 
