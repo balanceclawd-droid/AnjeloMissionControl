@@ -25,7 +25,12 @@ Set the values in `.env.local`:
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+ADMIN_USERNAME=your-admin-username
+ADMIN_PASSWORD=your-admin-password
 ```
+
+`ADMIN_USERNAME` and `ADMIN_PASSWORD` enable HTTP Basic Auth via `middleware.ts`.
+If they are not set, the app stays open. Once set in Vercel/local envs, the whole app and API require login.
 
 ### 3. Install & Run
 
