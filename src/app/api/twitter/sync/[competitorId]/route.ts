@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
+import { classifyCompetitivePost } from '@/lib/patterns'
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY
 const RAPIDAPI_HOST = process.env.RAPIDAPI_TWITTER_HOST || 'twitter241.p.rapidapi.com'
@@ -117,15 +118,27 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
     const errors: string[] = []
 
     for (const [i, tweet] of tweets.entries()) {
+      const classification = classifyCompetitivePost({
+        content: tweet.full_text,
+        engagement_score: scores[i],
+        bookmark_count: tweet.bookmarks,
+        quote_count: tweet.quotes,
+        conversation_depth: tweet.replies + tweet.quotes,
+      })
+
       const post = {
         competitor_id: competitor.id,
         platform: 'twitter',
         content: tweet.full_text,
         posted_at: new Date(tweet.created_at).toISOString(),
         engagement_score: scores[i],
-        hook_type: null,
-        structure: null,
-        flagged_as_pattern: false,
+        hook_type: classification.hook_type,
+        hook_text: classification.hook_text,
+        structure: classification.structure,
+        cta_type: classification.cta_type,
+        visual_type: classification.visual_type,
+        visual_description: classification.visual_description,
+        flagged_as_pattern: classification.flagged_as_pattern,
         twitter_post_id: tweet.id_str,
         bookmark_count: tweet.bookmarks,
         quote_count: tweet.quotes,

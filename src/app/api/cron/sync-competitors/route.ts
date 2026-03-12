@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
+import { backfillPostClassifications, classifyCompetitivePost, detectPatterns } from '@/lib/patterns'
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY
 const RAPIDAPI_HOST = process.env.RAPIDAPI_TWITTER_HOST || 'twitter241.p.rapidapi.com'
@@ -96,15 +97,27 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
 
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i]
+      const classification = classifyCompetitivePost({
+        content: tweet.full_text,
+        engagement_score: scores[i],
+        bookmark_count: tweet.bookmarks,
+        quote_count: tweet.quotes,
+        conversation_depth: tweet.replies + tweet.quotes,
+      })
+
       const { error } = await saveCompetitivePost({
         competitor_id: competitor.id,
         platform: 'twitter',
         content: tweet.full_text,
         posted_at: new Date(tweet.created_at).toISOString(),
         engagement_score: scores[i],
-        hook_type: null,
-        structure: null,
-        flagged_as_pattern: false,
+        hook_type: classification.hook_type,
+        hook_text: classification.hook_text,
+        structure: classification.structure,
+        cta_type: classification.cta_type,
+        visual_type: classification.visual_type,
+        visual_description: classification.visual_description,
+        flagged_as_pattern: classification.flagged_as_pattern,
         twitter_post_id: tweet.id_str,
         bookmark_count: tweet.bookmarks,
         quote_count: tweet.quotes,
@@ -287,118 +300,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const { data: topPosts } = await supabase
-      .from('competitive_posts')
-      .select('*, competitors(name, niche)')
-      .gte('engagement_score', 60)
-      .order('engagement_score', { ascending: false })
-      .limit(50)
-
-    if (topPosts && topPosts.length > 0) {
-      const nicheGroups: Record<string, any[]> = {}
-      for (const p of topPosts) {
-        const niche = p.competitors?.niche || 'Unknown'
-        if (!nicheGroups[niche]) nicheGroups[niche] = []
-        nicheGroups[niche].push(p)
-      }
-
-      for (const [niche, posts] of Object.entries(nicheGroups)) {
-        if (posts.length < 3) continue
-
-        const questionPosts = posts.filter((p: any) => p.content?.includes('?'))
-        if (questionPosts.length >= 2) {
-          const avgScore = Math.round(questionPosts.reduce((s: number, p: any) => s + p.engagement_score, 0) / questionPosts.length)
-          const uniqueCompetitors = new Set(questionPosts.map((p: any) => p.competitors?.name)).size
-
-          if (uniqueCompetitors >= 2) {
-            const { data: existing } = await supabase
-              .from('patterns')
-              .select('id')
-              .eq('niche', niche)
-              .eq('hook_type', 'question')
-              .eq('status', 'emerging')
-              .limit(1)
-
-            if (!existing || existing.length === 0) {
-              await supabase.from('patterns').insert({
-                niche,
-                hook_type: 'question',
-                structure: 'short-form',
-                cta_type: 'engagement',
-                pattern_description: `${uniqueCompetitors} ${niche} competitors using question hooks with avg score ${avgScore}`,
-                post_ids: questionPosts.slice(0, 5).map((p: any) => p.id),
-                competitor_count: uniqueCompetitors,
-                avg_engagement_score: avgScore,
-                status: 'emerging',
-              })
-              patternsCreated++
-            }
-          }
-        }
-
-        const mediaPosts = posts.filter((p: any) => p.content && p.content.length < 50 && p.content.includes('http'))
-        if (mediaPosts.length >= 2) {
-          const avgScore = Math.round(mediaPosts.reduce((s: number, p: any) => s + p.engagement_score, 0) / mediaPosts.length)
-          const uniqueCompetitors = new Set(mediaPosts.map((p: any) => p.competitors?.name)).size
-
-          if (uniqueCompetitors >= 2) {
-            const { data: existing } = await supabase
-              .from('patterns')
-              .select('id')
-              .eq('niche', niche)
-              .eq('hook_type', 'media-only')
-              .eq('status', 'emerging')
-              .limit(1)
-
-            if (!existing || existing.length === 0) {
-              await supabase.from('patterns').insert({
-                niche,
-                hook_type: 'media-only',
-                structure: 'media-only',
-                cta_type: 'none',
-                pattern_description: `${uniqueCompetitors} ${niche} competitors getting high engagement with media-only posts (avg score ${avgScore})`,
-                post_ids: mediaPosts.slice(0, 5).map((p: any) => p.id),
-                competitor_count: uniqueCompetitors,
-                avg_engagement_score: avgScore,
-                status: 'emerging',
-              })
-              patternsCreated++
-            }
-          }
-        }
-
-        const identityPosts = posts.filter((p: any) => p.content && p.content.length < 100 && !p.content.includes('http') && !p.content.includes('?'))
-        if (identityPosts.length >= 2) {
-          const avgScore = Math.round(identityPosts.reduce((s: number, p: any) => s + p.engagement_score, 0) / identityPosts.length)
-          const uniqueCompetitors = new Set(identityPosts.map((p: any) => p.competitors?.name)).size
-
-          if (uniqueCompetitors >= 2) {
-            const { data: existing } = await supabase
-              .from('patterns')
-              .select('id')
-              .eq('niche', niche)
-              .eq('hook_type', 'identity')
-              .eq('status', 'emerging')
-              .limit(1)
-
-            if (!existing || existing.length === 0) {
-              await supabase.from('patterns').insert({
-                niche,
-                hook_type: 'identity',
-                structure: 'one-liner',
-                cta_type: 'none',
-                pattern_description: `${uniqueCompetitors} ${niche} competitors using bold identity one-liners with avg score ${avgScore}`,
-                post_ids: identityPosts.slice(0, 5).map((p: any) => p.id),
-                competitor_count: uniqueCompetitors,
-                avg_engagement_score: avgScore,
-                status: 'emerging',
-              })
-              patternsCreated++
-            }
-          }
-        }
-      }
-    }
+    const backfill = await backfillPostClassifications()
+    const detection = await detectPatterns()
+    patternsCreated = detection.patternsDetected || detection.patternsProcessed || 0
+    console.log(`[Cron] Backfilled ${backfill.updated}/${backfill.scanned} posts; detection:`, detection)
   } catch (err: any) {
     console.error(`[Cron] Alert/pattern detection error:`, err.message)
   }

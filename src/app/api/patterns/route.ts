@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { detectPatterns, sanitizePatternPostIds } from '@/lib/patterns'
+import { backfillPostClassifications, detectPatterns, sanitizePatternPostIds } from '@/lib/patterns'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST() {
-  const result = await detectPatterns()
-  return NextResponse.json(result)
+  const backfill = await backfillPostClassifications()
+  const detection = await detectPatterns()
+  return NextResponse.json({ backfill, detection })
 }
