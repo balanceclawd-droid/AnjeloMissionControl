@@ -9,6 +9,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .select('*')
     .eq('client_id', params.id)
     .order('week_ending', { ascending: false })
+    .order('submitted_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(metrics)

@@ -40,6 +40,7 @@ export default function CompetitorsPage() {
   const [competitors, setCompetitors] = useState<any[]>([])
   const [showForm, setShowForm] = useState(false)
   const [activeTab, setActiveTab] = useState<'all' | 'gaming' | 'trading'>('all')
+  const [deletingId, setDeletingId] = useState<number | null>(null)
   const [form, setForm] = useState({ name: '', niche: 'CEX', platform: 'twitter', account_url: '', tracked_type: 'specific' })
 
   useEffect(() => {
@@ -64,6 +65,19 @@ export default function CompetitorsPage() {
       setCompetitors(prev => [comp, ...prev])
       setForm({ name: '', niche: 'CEX', platform: 'twitter', account_url: '', tracked_type: 'specific' })
       setShowForm(false)
+    }
+  }
+
+  const deleteCompetitor = async (id: number, name: string) => {
+    if (!confirm(`Delete ${name}? This will also remove its synced posts.`)) return
+    setDeletingId(id)
+    try {
+      const res = await fetch(`/api/competitors/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setCompetitors(prev => prev.filter(c => c.id !== id))
+      }
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -110,6 +124,20 @@ export default function CompetitorsPage() {
       key: 'created_at',
       label: 'Added',
       render: (row: any) => new Date(row.created_at).toLocaleDateString()
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      sortable: false,
+      render: (row: any) => (
+        <button
+          onClick={() => deleteCompetitor(row.id, row.name)}
+          disabled={deletingId === row.id}
+          className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+        >
+          {deletingId === row.id ? 'Deleting...' : 'Delete'}
+        </button>
+      )
     }
   ]
 

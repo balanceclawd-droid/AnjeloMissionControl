@@ -23,7 +23,6 @@ function extractUsername(competitor: { account_url: string | null; name: string 
     const match = competitor.account_url.match(/(?:twitter\.com|x\.com)\/([^/?]+)/)
     if (match) return match[1]
   }
-  // Fallback to competitor name, strip @ if present
   return competitor.name.replace(/^@/, '')
 }
 
@@ -33,6 +32,42 @@ function calculateEngagementScores(tweets: { likes: number; retweets: number; re
   const maxRaw = Math.max(...rawScores)
   if (maxRaw === 0) return rawScores.map(() => 0)
   return rawScores.map(s => Math.min(100, Math.round((s / maxRaw) * 100)))
+}
+
+function extractTweetEntries(tweetsData: any) {
+  const instructions = tweetsData?.result?.timeline?.instructions || []
+  const items = instructions.flatMap((instruction: any) => {
+    if (Array.isArray(instruction.entries)) return instruction.entries
+    if (instruction.entry) return [instruction.entry]
+    return []
+  })
+
+  return items.filter(
+    (entry: any) => entry.content?.entryType === 'TimelineTimelineItem' &&
+      entry.content?.itemContent?.__typename === 'TimelineTweet'
+  )
+}
+
+async function saveCompetitivePost(post: any) {
+  const { data: existing, error: selectError } = await supabase
+    .from('competitive_posts')
+    .select('id')
+    .eq('competitor_id', post.competitor_id)
+    .eq('twitter_post_id', post.twitter_post_id)
+    .maybeSingle()
+
+  if (selectError) return { error: selectError }
+
+  if (existing?.id) {
+    return supabase
+      .from('competitive_posts')
+      .update(post)
+      .eq('id', existing.id)
+  }
+
+  return supabase
+    .from('competitive_posts')
+    .insert(post)
 }
 
 export async function POST(_req: NextRequest, { params }: { params: { competitorId: string } }) {
@@ -52,28 +87,15 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
     }
 
     const username = extractUsername(competitor)
-
-    // Step 1: Get user ID from screen name
     const userData = await twitterFetch(`/user?username=${encodeURIComponent(username)}`)
     const userId = userData?.result?.data?.user?.result?.rest_id
     if (!userId) {
       return NextResponse.json({ error: `Could not find Twitter user: @${username}` }, { status: 404 })
     }
 
-    // Step 2: Get user tweets
     const tweetsData = await twitterFetch(`/user-tweets?user=${userId}&count=20`)
+    const tweetEntries = extractTweetEntries(tweetsData)
 
-    // Parse tweet entries from timeline instructions
-    const instructions = tweetsData?.result?.timeline?.instructions || []
-    const addEntries = instructions.find((i: any) => i.type === 'TimelineAddEntries')
-    const entries = addEntries?.entries || []
-
-    const tweetEntries = entries.filter(
-      (e: any) => e.content?.entryType === 'TimelineTimelineItem' &&
-        e.content?.itemContent?.__typename === 'TimelineTweet'
-    )
-
-    // Extract tweet data
     const tweets = tweetEntries.map((entry: any) => {
       const legacy = entry.content?.itemContent?.tweet_results?.result?.legacy
       if (!legacy) return null
@@ -89,38 +111,37 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
       }
     }).filter((t: any) => t && t.id_str && t.full_text)
 
-    // Calculate engagement scores
     const scores = calculateEngagementScores(tweets)
 
-    // Step 3: Upsert posts into competitive_posts
-    const postsToInsert = tweets.map((tweet: any, i: number) => ({
-      competitor_id: competitor.id,
-      platform: 'twitter',
-      content: tweet.full_text,
-      posted_at: new Date(tweet.created_at).toISOString(),
-      engagement_score: scores[i],
-      hook_type: null,
-      structure: null,
-      flagged_as_pattern: false,
-      twitter_post_id: tweet.id_str,
-      bookmark_count: tweet.bookmarks,
-      quote_count: tweet.quotes,
-      conversation_depth: tweet.replies + tweet.quotes,
-    }))
-
     let synced = 0
-    for (const post of postsToInsert) {
-      const { error } = await supabase
-        .from('competitive_posts')
-        .upsert(post, { onConflict: 'competitor_id,twitter_post_id' })
+    const errors: string[] = []
+
+    for (const [i, tweet] of tweets.entries()) {
+      const post = {
+        competitor_id: competitor.id,
+        platform: 'twitter',
+        content: tweet.full_text,
+        posted_at: new Date(tweet.created_at).toISOString(),
+        engagement_score: scores[i],
+        hook_type: null,
+        structure: null,
+        flagged_as_pattern: false,
+        twitter_post_id: tweet.id_str,
+        bookmark_count: tweet.bookmarks,
+        quote_count: tweet.quotes,
+        conversation_depth: tweet.replies + tweet.quotes,
+      }
+
+      const { error } = await saveCompetitivePost(post)
       if (error) {
-        console.error(`[Twitter Sync] competitive_posts upsert error:`, error.message)
+        console.error(`[Twitter Sync] competitive_posts save error:`, error.message)
+        errors.push(error.message)
       } else {
         synced++
       }
     }
 
-    return NextResponse.json({ synced, total: tweets.length })
+    return NextResponse.json({ synced, total: tweets.length, errors })
   } catch (err: any) {
     console.error('Twitter sync error:', err)
     return NextResponse.json({ error: err.message || 'Sync failed' }, { status: 500 })

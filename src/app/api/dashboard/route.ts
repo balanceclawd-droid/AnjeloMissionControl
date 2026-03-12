@@ -3,6 +3,48 @@ import { supabase } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
+function parseMetric(metric: any) {
+  if (!metric) return null
+  try {
+    return {
+      ...metric,
+      data: typeof metric.data === 'string' ? JSON.parse(metric.data) : metric.data,
+    }
+  } catch {
+    return metric
+  }
+}
+
+function metricTimestamp(metric: any) {
+  return new Date(metric.submitted_at || metric.created_at || 0).getTime()
+}
+
+function weekTimestamp(metric: any) {
+  return new Date(metric.week_ending).getTime()
+}
+
+function getLatestDistinctMetrics(metrics: any[]) {
+  const newestPerWeek = new Map<string, any>()
+
+  for (const metric of metrics || []) {
+    const existing = newestPerWeek.get(metric.week_ending)
+    if (!existing || metricTimestamp(metric) > metricTimestamp(existing)) {
+      newestPerWeek.set(metric.week_ending, metric)
+    }
+  }
+
+  const distinctWeeks = Array.from(newestPerWeek.values()).sort((a, b) => {
+    const weekDiff = weekTimestamp(b) - weekTimestamp(a)
+    if (weekDiff !== 0) return weekDiff
+    return metricTimestamp(b) - metricTimestamp(a)
+  })
+
+  return {
+    latestMetric: parseMetric(distinctWeeks[0] || null),
+    prevMetric: parseMetric(distinctWeeks[1] || null),
+  }
+}
+
 export async function GET() {
   const { data: alerts } = await supabase
     .from('alerts')
@@ -24,17 +66,15 @@ export async function GET() {
 
   const clientGrid = await Promise.all(
     (clients || []).map(async (client) => {
-      const { data: latestMetrics } = await supabase
+      const { data: metrics } = await supabase
         .from('weekly_metrics')
         .select('*')
         .eq('client_id', client.id)
         .order('week_ending', { ascending: false })
-        .limit(2)
+        .order('submitted_at', { ascending: false })
 
-      const latestMetric = latestMetrics?.[0] || null
-      const prevMetric = latestMetrics?.[1] || null
+      const { latestMetric, prevMetric } = getLatestDistinctMetrics(metrics || [])
 
-      // For gaming clients, always pull latest Twitter snapshot
       let twitterSnapshot = null
       if (client.vertical === 'gaming_web3' && client.twitter_url) {
         const { data: snapshots } = await supabase
@@ -48,8 +88,8 @@ export async function GET() {
 
       return {
         ...client,
-        latest_metric: latestMetric ? (() => { try { return { ...latestMetric, data: typeof latestMetric.data === 'string' ? JSON.parse(latestMetric.data) : latestMetric.data } } catch { return latestMetric } })() : null,
-        prev_metric: prevMetric ? (() => { try { return { ...prevMetric, data: typeof prevMetric.data === 'string' ? JSON.parse(prevMetric.data) : prevMetric.data } } catch { return prevMetric } })() : null,
+        latest_metric: latestMetric,
+        prev_metric: prevMetric,
         twitter_snapshots: twitterSnapshot,
       }
     })

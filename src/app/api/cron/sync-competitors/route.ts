@@ -35,6 +35,37 @@ function calculateEngagementScores(tweets: { likes: number; retweets: number; re
   return rawScores.map(s => Math.min(100, Math.round((s / maxRaw) * 100)))
 }
 
+function extractTweetEntries(tweetsData: any) {
+  const instructions = tweetsData?.result?.timeline?.instructions || []
+  const items = instructions.flatMap((instruction: any) => {
+    if (Array.isArray(instruction.entries)) return instruction.entries
+    if (instruction.entry) return [instruction.entry]
+    return []
+  })
+
+  return items.filter(
+    (entry: any) => entry.content?.entryType === 'TimelineTimelineItem' &&
+      entry.content?.itemContent?.__typename === 'TimelineTweet'
+  )
+}
+
+async function saveCompetitivePost(post: any) {
+  const { data: existing, error: selectError } = await supabase
+    .from('competitive_posts')
+    .select('id')
+    .eq('competitor_id', post.competitor_id)
+    .eq('twitter_post_id', post.twitter_post_id)
+    .maybeSingle()
+
+  if (selectError) return { error: selectError }
+
+  if (existing?.id) {
+    return supabase.from('competitive_posts').update(post).eq('id', existing.id)
+  }
+
+  return supabase.from('competitive_posts').insert(post)
+}
+
 async function syncCompetitor(competitor: any): Promise<{ name: string; synced: number; error?: string }> {
   try {
     const username = extractUsername(competitor.account_url, competitor.name)
@@ -43,14 +74,7 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
     if (!userId) return { name: competitor.name, synced: 0, error: `User not found: @${username}` }
 
     const tweetsData = await twitterFetch(`/user-tweets?user=${userId}&count=20`)
-    const instructions = tweetsData?.result?.timeline?.instructions || []
-    const addEntries = instructions.find((i: any) => i.type === 'TimelineAddEntries')
-    const entries = addEntries?.entries || []
-
-    const tweetEntries = entries.filter(
-      (e: any) => e.content?.entryType === 'TimelineTimelineItem' &&
-        e.content?.itemContent?.__typename === 'TimelineTweet'
-    )
+    const tweetEntries = extractTweetEntries(tweetsData)
 
     const tweets = tweetEntries.map((entry: any) => {
       const legacy = entry.content?.itemContent?.tweet_results?.result?.legacy
@@ -72,7 +96,7 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
 
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i]
-      const { error } = await supabase.from('competitive_posts').upsert({
+      const { error } = await saveCompetitivePost({
         competitor_id: competitor.id,
         platform: 'twitter',
         content: tweet.full_text,
@@ -85,9 +109,9 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
         bookmark_count: tweet.bookmarks,
         quote_count: tweet.quotes,
         conversation_depth: tweet.replies + tweet.quotes,
-      }, { onConflict: 'competitor_id,twitter_post_id' })
+      })
       if (error) {
-        console.error(`[Cron] competitive_posts upsert error for ${competitor.name}:`, error.message)
+        console.error(`[Cron] competitive_posts save error for ${competitor.name}:`, error.message)
       } else {
         synced++
       }
@@ -100,7 +124,6 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
 }
 
 export async function GET(req: NextRequest) {
-  // Verify cron secret
   const authHeader = req.headers.get('authorization')
   if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -110,7 +133,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'RAPIDAPI_KEY not configured' }, { status: 500 })
   }
 
-  // Get all Twitter competitors
   const { data: competitors, error } = await supabase
     .from('competitors')
     .select('*')
@@ -121,19 +143,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: 'No Twitter competitors to sync', results: [] })
   }
 
-  // Sync each competitor sequentially to avoid rate limits
   const results = []
   for (const competitor of competitors) {
     const result = await syncCompetitor(competitor)
     results.push(result)
-    // Small delay between requests
     await new Promise(r => setTimeout(r, 1000))
   }
 
   const totalSynced = results.reduce((sum, r) => sum + r.synced, 0)
-  console.log(`[Cron] Synced ${totalSynced} new tweets across ${competitors.length} competitors`)
+  console.log(`[Cron] Synced ${totalSynced} tweets across ${competitors.length} competitors`)
 
-  // Snapshot Twitter followers for all clients with a twitter_url
   const today = new Date().toISOString().slice(0, 10)
   let clientSnapshots = 0
 
@@ -174,21 +193,18 @@ export async function GET(req: NextRequest) {
 
   console.log(`[Cron] Took ${clientSnapshots} client Twitter snapshots`)
 
-  // ── Auto-detect engagement spikes & patterns ──
   let alertsCreated = 0
   let patternsCreated = 0
 
   try {
-    // 1. ENGAGEMENT SPIKE ALERTS — any post scoring 80+ creates an alert
     const { data: hotPosts } = await supabase
       .from('competitive_posts')
       .select('*, competitors(name, niche)')
       .gte('engagement_score', 80)
-      .gte('posted_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()) // Last 48h only
+      .gte('posted_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
 
     if (hotPosts && hotPosts.length > 0) {
       for (const post of hotPosts) {
-        // Check if alert already exists for this post
         const { data: existing } = await supabase
           .from('alerts')
           .select('id')
@@ -210,7 +226,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 2. SILENCE ALERTS — competitor hasn't posted in 5+ days
     if (competitors) {
       for (const comp of competitors) {
         const { data: recentPosts } = await supabase
@@ -248,7 +263,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 3. FOLLOWER DROP ALERTS — client lost 50+ followers in a day
     if (clients) {
       for (const client of clients) {
         const { data: snaps } = await supabase
@@ -273,11 +287,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 4. AUTO-PATTERN DETECTION — find hook types used by 2+ competitors with high engagement
-    const hookTypes = ['question', 'bold_claim', 'announcement', 'social_proof', 'meme', 'identity', 'thread', 'collaboration']
-    const structures = ['one-liner', 'short-form', 'thread', 'media-only', 'quote-tweet']
-
-    // Classify top posts by simple heuristics
     const { data: topPosts } = await supabase
       .from('competitive_posts')
       .select('*, competitors(name, niche)')
@@ -286,7 +295,6 @@ export async function GET(req: NextRequest) {
       .limit(50)
 
     if (topPosts && topPosts.length > 0) {
-      // Group by niche and detect common hooks
       const nicheGroups: Record<string, any[]> = {}
       for (const p of topPosts) {
         const niche = p.competitors?.niche || 'Unknown'
@@ -297,7 +305,6 @@ export async function GET(req: NextRequest) {
       for (const [niche, posts] of Object.entries(nicheGroups)) {
         if (posts.length < 3) continue
 
-        // Detect question hooks
         const questionPosts = posts.filter((p: any) => p.content?.includes('?'))
         if (questionPosts.length >= 2) {
           const avgScore = Math.round(questionPosts.reduce((s: number, p: any) => s + p.engagement_score, 0) / questionPosts.length)
@@ -329,7 +336,6 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // Detect media-heavy posts (short text = likely media-only)
         const mediaPosts = posts.filter((p: any) => p.content && p.content.length < 50 && p.content.includes('http'))
         if (mediaPosts.length >= 2) {
           const avgScore = Math.round(mediaPosts.reduce((s: number, p: any) => s + p.engagement_score, 0) / mediaPosts.length)
@@ -361,7 +367,6 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // Detect identity/bold claim posts (short, no links, high engagement)
         const identityPosts = posts.filter((p: any) => p.content && p.content.length < 100 && !p.content.includes('http') && !p.content.includes('?'))
         if (identityPosts.length >= 2) {
           const avgScore = Math.round(identityPosts.reduce((s: number, p: any) => s + p.engagement_score, 0) / identityPosts.length)
