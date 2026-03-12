@@ -11,7 +11,7 @@ interface Post {
   niche?: string
 }
 
-interface PostClassification {
+export interface PostClassification {
   hook_type: string | null
   hook_text: string | null
   structure: string | null
@@ -20,6 +20,38 @@ interface PostClassification {
   visual_description: string | null
   flagged_as_pattern: boolean
 }
+
+const HOOK_TYPES = [
+  'partnership_signal',
+  'launch_update',
+  'proof_of_results',
+  'hot_take',
+  'speculative_alpha',
+  'identity_signal',
+  'educational_breakdown',
+  'community_bait',
+  'meme_humor',
+  'bold_claim',
+  'statement',
+] as const
+
+const STRUCTURE_TYPES = [
+  'thread',
+  'listicle',
+  'media-only',
+  'one-liner',
+  'educational',
+  'storytelling',
+  'short-form',
+] as const
+
+const CTA_TYPES = ['engagement', 'conversion', 'follow', 'link_click', 'none'] as const
+const VISUAL_TYPES = ['video', 'image', 'carousel', 'media_hint', 'text_only'] as const
+
+const LLM_BASE_URL = process.env.LLM_CLASSIFIER_BASE_URL?.trim()
+const LLM_API_KEY = process.env.LLM_CLASSIFIER_API_KEY?.trim()
+const LLM_MODEL = process.env.LLM_CLASSIFIER_MODEL?.trim()
+const LLM_TIMEOUT_MS = Number(process.env.LLM_CLASSIFIER_TIMEOUT_MS || 12000)
 
 function formatLabel(value: string) {
   return value.replace(/_/g, ' ')
@@ -158,7 +190,7 @@ function inferVisualType(content: string) {
   return 'text_only'
 }
 
-export function classifyCompetitivePost(input: {
+function buildHeuristicClassification(input: {
   content?: string | null
   engagement_score?: number | null
   bookmark_count?: number | null
@@ -171,9 +203,13 @@ export function classifyCompetitivePost(input: {
   const cta_type = inferCtaType(content)
   const visual_type = inferVisualType(content)
   const hook_text = getHookText(content)
-  const highSignal = (input.engagement_score || 0) >= 70 || (input.bookmark_count || 0) >= 20 || (input.quote_count || 0) >= 10 || (input.conversation_depth || 0) >= 25
+  const highSignal =
+    (input.engagement_score || 0) >= 70 ||
+    (input.bookmark_count || 0) >= 20 ||
+    (input.quote_count || 0) >= 10 ||
+    (input.conversation_depth || 0) >= 25
 
-  const classification: PostClassification = {
+  return {
     hook_type,
     hook_text,
     structure,
@@ -181,32 +217,219 @@ export function classifyCompetitivePost(input: {
     visual_type,
     visual_description: visual_type === 'media_hint' ? 'Likely link-led media post inferred from tweet shape' : null,
     flagged_as_pattern: Boolean(highSignal && hook_type && structure && cta_type && cta_type !== 'none'),
-  }
-
-  return classification
+  } satisfies PostClassification
 }
 
-export async function backfillPostClassifications() {
-  const { data: posts, error } = await supabase
-    .from('competitive_posts')
-    .select('id, content, engagement_score, bookmark_count, quote_count, conversation_depth, hook_type, hook_text, structure, cta_type, visual_type, visual_description, flagged_as_pattern')
-    .order('posted_at', { ascending: false })
-    .limit(500)
+function hasLlmClassifierConfig() {
+  return Boolean(LLM_BASE_URL && LLM_API_KEY && LLM_MODEL)
+}
 
+function extractJsonObject(text: string) {
+  const trimmed = text.trim()
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const candidate = fenced?.[1] || trimmed
+
+  try {
+    return JSON.parse(candidate)
+  } catch {
+    const firstBrace = candidate.indexOf('{')
+    const lastBrace = candidate.lastIndexOf('}')
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      return JSON.parse(candidate.slice(firstBrace, lastBrace + 1))
+    }
+    throw new Error('LLM response was not valid JSON')
+  }
+}
+
+function pickEnumValue<T extends readonly string[]>(value: unknown, allowed: T): T[number] | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, '_')
+  return (allowed.find((item) => item.toLowerCase() === normalized) || null) as T[number] | null
+}
+
+function sanitizeLlmClassification(payload: any, fallback: PostClassification): PostClassification {
+  const hook_type = pickEnumValue(payload?.hook_type, HOOK_TYPES) || fallback.hook_type
+  const structure = pickEnumValue(payload?.structure, STRUCTURE_TYPES) || fallback.structure
+  const cta_type = pickEnumValue(payload?.cta_type, CTA_TYPES) || fallback.cta_type
+  const visual_type = pickEnumValue(payload?.visual_type, VISUAL_TYPES) || fallback.visual_type
+  const hook_text = typeof payload?.hook_text === 'string' ? payload.hook_text.trim().slice(0, 140) : fallback.hook_text
+  const visual_description = typeof payload?.visual_description === 'string'
+    ? payload.visual_description.trim().slice(0, 180) || null
+    : fallback.visual_description
+
+  const flagged_as_pattern = typeof payload?.flagged_as_pattern === 'boolean'
+    ? payload.flagged_as_pattern
+    : fallback.flagged_as_pattern
+
+  return {
+    hook_type,
+    hook_text,
+    structure,
+    cta_type,
+    visual_type,
+    visual_description,
+    flagged_as_pattern,
+  }
+}
+
+async function fetchLlmClassification(input: {
+  content?: string | null
+  engagement_score?: number | null
+  bookmark_count?: number | null
+  quote_count?: number | null
+  conversation_depth?: number | null
+}) {
+  if (!hasLlmClassifierConfig()) return null
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(`${LLM_BASE_URL!.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${LLM_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        temperature: 0.1,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You classify competitive social posts into a strict taxonomy for marketing analytics. Return JSON only. Choose only from the provided enums. Do not explain your answer.',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              task: 'Classify this competitive social post',
+              enums: {
+                hook_type: HOOK_TYPES,
+                structure: STRUCTURE_TYPES,
+                cta_type: CTA_TYPES,
+                visual_type: VISUAL_TYPES,
+              },
+              required_output_shape: {
+                hook_type: 'enum',
+                hook_text: 'string|null',
+                structure: 'enum',
+                cta_type: 'enum',
+                visual_type: 'enum',
+                visual_description: 'string|null',
+                flagged_as_pattern: 'boolean',
+              },
+              guidance: [
+                'Infer likely visuals from the copy only; do not hallucinate specific assets unless hinted.',
+                'flagged_as_pattern should be true only if the post is a strong, replicable format rather than a generic update.',
+                'hook_text should be the shortest meaningful opening hook.',
+              ],
+              post: {
+                content: input.content || '',
+                engagement_score: input.engagement_score || 0,
+                bookmark_count: input.bookmark_count || 0,
+                quote_count: input.quote_count || 0,
+                conversation_depth: input.conversation_depth || 0,
+              },
+            }),
+          },
+        ],
+      }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(`LLM classifier error (${response.status}): ${text}`)
+    }
+
+    const data = await response.json()
+    const rawContent = data?.choices?.[0]?.message?.content
+    const content = Array.isArray(rawContent)
+      ? rawContent.map((part: any) => part?.text || '').join('')
+      : rawContent
+
+    if (typeof content !== 'string' || !content.trim()) {
+      throw new Error('LLM classifier returned empty content')
+    }
+
+    return extractJsonObject(content)
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export function classifyCompetitivePost(input: {
+  content?: string | null
+  engagement_score?: number | null
+  bookmark_count?: number | null
+  quote_count?: number | null
+  conversation_depth?: number | null
+}) {
+  return buildHeuristicClassification(input)
+}
+
+export async function classifyCompetitivePostWithFallback(input: {
+  content?: string | null
+  engagement_score?: number | null
+  bookmark_count?: number | null
+  quote_count?: number | null
+  conversation_depth?: number | null
+}) {
+  const heuristic = buildHeuristicClassification(input)
+
+  if (!hasLlmClassifierConfig()) {
+    return { ...heuristic, classifier_source: 'heuristic', classifier_error: null }
+  }
+
+  try {
+    const llmPayload = await fetchLlmClassification(input)
+    const merged = sanitizeLlmClassification(llmPayload, heuristic)
+    return { ...merged, classifier_source: 'llm', classifier_error: null }
+  } catch (error: any) {
+    console.error('[Patterns] LLM classification failed, falling back to heuristics:', error?.message || error)
+    return { ...heuristic, classifier_source: 'heuristic_fallback', classifier_error: error?.message || 'Unknown LLM classification error' }
+  }
+}
+
+export async function backfillPostClassifications(options?: {
+  limit?: number
+  force?: boolean
+  competitorId?: number
+}) {
+  const force = Boolean(options?.force)
+  let query = supabase
+    .from('competitive_posts')
+    .select('id, competitor_id, content, engagement_score, bookmark_count, quote_count, conversation_depth, hook_type, hook_text, structure, cta_type, visual_type, visual_description, flagged_as_pattern')
+    .order('posted_at', { ascending: false })
+    .limit(options?.limit || 500)
+
+  if (options?.competitorId != null) {
+    query = query.eq('competitor_id', options.competitorId)
+  }
+
+  if (!force) {
+    query = query.or('hook_type.is.null,structure.is.null,cta_type.is.null,visual_type.is.null')
+  }
+
+  const { data: posts, error } = await query
   if (error) throw error
 
   let updated = 0
+  let llmClassified = 0
+  let heuristicClassified = 0
+  const errors: string[] = []
 
   for (const post of posts || []) {
-    const inferred = classifyCompetitivePost(post as any)
+    const classified = await classifyCompetitivePostWithFallback(post as any)
     const nextPayload = {
-      hook_type: post.hook_type || inferred.hook_type,
-      hook_text: post.hook_text || inferred.hook_text,
-      structure: post.structure || inferred.structure,
-      cta_type: post.cta_type || inferred.cta_type,
-      visual_type: post.visual_type || inferred.visual_type,
-      visual_description: post.visual_description || inferred.visual_description,
-      flagged_as_pattern: Boolean(post.flagged_as_pattern || inferred.flagged_as_pattern),
+      hook_type: classified.hook_type,
+      hook_text: classified.hook_text,
+      structure: classified.structure,
+      cta_type: classified.cta_type,
+      visual_type: classified.visual_type,
+      visual_description: classified.visual_description,
+      flagged_as_pattern: Boolean(classified.flagged_as_pattern),
     }
 
     const changed =
@@ -218,17 +441,30 @@ export async function backfillPostClassifications() {
       post.visual_description !== nextPayload.visual_description ||
       Boolean(post.flagged_as_pattern) !== nextPayload.flagged_as_pattern
 
-    if (!changed) continue
+    if (!changed && force === false) continue
 
     const { error: updateError } = await supabase
       .from('competitive_posts')
       .update(nextPayload)
       .eq('id', post.id)
 
-    if (!updateError) updated++
+    if (updateError) {
+      errors.push(`Post ${post.id}: ${updateError.message}`)
+      continue
+    }
+
+    updated++
+    if (classified.classifier_source === 'llm') llmClassified++
+    else heuristicClassified++
   }
 
-  return { scanned: posts?.length || 0, updated }
+  return {
+    scanned: posts?.length || 0,
+    updated,
+    llmClassified,
+    heuristicClassified,
+    errors,
+  }
 }
 
 export async function sanitizePatternPostIds(patternId?: number) {
@@ -282,6 +518,112 @@ export async function sanitizePatternPostIds(patternId?: number) {
   }
 
   return updatedPatterns
+}
+
+function verticalMatchesNiche(vertical: string, niche: string) {
+  const v = (vertical || '').toLowerCase()
+  const n = (niche || '').toLowerCase()
+
+  if (!v || !n) return false
+  if (v === 'other') return true
+  if (v === 'trading_platform' || v === 'ai_trading' || v === 'cex') return ['cex', 'dex', 'defi', 'trading', 'exchange'].some(token => n.includes(token))
+  if (v === 'defi') return ['dex', 'defi', 'amm', 'swap'].some(token => n.includes(token))
+  if (v === 'gaming_web3') return ['gaming', 'gamefi', 'web3', 'nft'].some(token => n.includes(token))
+  if (v === 'nft') return ['nft', 'web3', 'gaming'].some(token => n.includes(token))
+  if (v === 'social') return ['social', 'creator', 'community'].some(token => n.includes(token))
+  return n.includes(v)
+}
+
+function buildReplicationTactic(pattern: any) {
+  const steps: string[] = []
+
+  if (pattern.hook_type === 'proof_of_results') {
+    steps.push('Lead with a concrete outcome, milestone, or proof point in the first line')
+  } else if (pattern.hook_type === 'community_bait') {
+    steps.push('Open with a sharp question or polarising choice that invites replies')
+  } else if (pattern.hook_type === 'educational_breakdown') {
+    steps.push('Turn the post into a teachable breakdown with one clear takeaway per section')
+  } else if (pattern.hook_type === 'launch_update') {
+    steps.push('Frame the update around what is newly available right now and who it helps')
+  } else if (pattern.hook_type === 'hot_take' || pattern.hook_type === 'bold_claim') {
+    steps.push('Use a strong opinionated opener, then support it with one proof point')
+  } else {
+    steps.push(`Test a ${formatLabel(pattern.hook_type)} opening line instead of a generic announcement`)
+  }
+
+  if (pattern.structure === 'thread') {
+    steps.push('Expand it into a short thread with a punchy first post and 3-5 supporting beats')
+  } else if (pattern.structure === 'listicle') {
+    steps.push('Package it as a numbered list so readers instantly understand the value')
+  } else if (pattern.structure === 'storytelling') {
+    steps.push('Wrap the message in a mini story or POV moment rather than feature copy')
+  } else if (pattern.structure === 'educational') {
+    steps.push('Use a teaching format with simple examples instead of abstract claims')
+  } else {
+    steps.push(`Keep the format ${formatLabel(pattern.structure)} so it stays lightweight to test`)
+  }
+
+  if (pattern.cta_type === 'engagement') {
+    steps.push('End with one reply-driving prompt to increase discussion and distribution')
+  } else if (pattern.cta_type === 'conversion') {
+    steps.push('Close with one direct action: apply, sign up, join, or get access')
+  } else if (pattern.cta_type === 'link_click') {
+    steps.push('Attach a link only after the main hook has earned attention')
+  } else if (pattern.cta_type === 'follow') {
+    steps.push('Use the CTA to grow the audience if the content is part of a wider series')
+  }
+
+  return steps.slice(0, 3)
+}
+
+export async function getClientReplicationRecommendations() {
+  const [{ data: clients, error: clientsError }, { data: patterns, error: patternsError }] = await Promise.all([
+    supabase.from('clients').select('*').eq('status', 'active').order('created_at', { ascending: false }),
+    supabase.from('patterns').select('*').in('status', ['emerging', 'active']).order('avg_engagement_score', { ascending: false }).limit(30),
+  ])
+
+  if (clientsError) throw clientsError
+  if (patternsError) throw patternsError
+
+  const recommendations = (clients || []).map((client: any) => {
+    const matchedPatterns = (patterns || [])
+      .filter((pattern: any) => verticalMatchesNiche(client.vertical, pattern.niche))
+      .sort((a: any, b: any) => {
+        const statusScore = (value: string) => (value === 'active' ? 2 : value === 'emerging' ? 1 : 0)
+        return statusScore(b.status) - statusScore(a.status) || (b.avg_engagement_score || 0) - (a.avg_engagement_score || 0)
+      })
+      .slice(0, 3)
+
+    return {
+      client_id: client.id,
+      client_name: client.name,
+      client_vertical: client.vertical,
+      recommendations: matchedPatterns.map((pattern: any) => ({
+        pattern_id: pattern.id,
+        niche: pattern.niche,
+        status: pattern.status,
+        title: `${formatLabel(pattern.hook_type)} + ${formatLabel(pattern.structure)}`,
+        why_it_matters: pattern.pattern_description,
+        replicate_steps: buildReplicationTactic(pattern),
+        suggested_cta: formatLabel(pattern.cta_type),
+        avg_engagement_score: pattern.avg_engagement_score,
+        competitor_count: pattern.competitor_count,
+      })),
+    }
+  })
+
+  const clientsWithSuggestions = recommendations.filter((item) => item.recommendations.length > 0)
+
+  return {
+    overview: {
+      active_clients: clients?.length || 0,
+      matched_clients: clientsWithSuggestions.length,
+      active_pattern_pool: patterns?.length || 0,
+      llm_enabled: hasLlmClassifierConfig(),
+      generated_at: new Date().toISOString(),
+    },
+    recommendations,
+  }
 }
 
 export async function detectPatterns() {

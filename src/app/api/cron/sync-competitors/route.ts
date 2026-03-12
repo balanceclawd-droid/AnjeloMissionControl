@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { backfillPostClassifications, classifyCompetitivePost, detectPatterns } from '@/lib/patterns'
+import { backfillPostClassifications, classifyCompetitivePostWithFallback, detectPatterns } from '@/lib/patterns'
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY
 const RAPIDAPI_HOST = process.env.RAPIDAPI_TWITTER_HOST || 'twitter241.p.rapidapi.com'
@@ -97,7 +97,7 @@ async function syncCompetitor(competitor: any): Promise<{ name: string; synced: 
 
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i]
-      const classification = classifyCompetitivePost({
+      const classification = await classifyCompetitivePostWithFallback({
         content: tweet.full_text,
         engagement_score: scores[i],
         bookmark_count: tweet.bookmarks,

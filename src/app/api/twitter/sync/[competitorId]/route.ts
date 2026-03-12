@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { classifyCompetitivePost } from '@/lib/patterns'
+import { classifyCompetitivePostWithFallback } from '@/lib/patterns'
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY
 const RAPIDAPI_HOST = process.env.RAPIDAPI_TWITTER_HOST || 'twitter241.p.rapidapi.com'
@@ -118,7 +118,7 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
     const errors: string[] = []
 
     for (const [i, tweet] of tweets.entries()) {
-      const classification = classifyCompetitivePost({
+      const classification = await classifyCompetitivePostWithFallback({
         content: tweet.full_text,
         engagement_score: scores[i],
         bookmark_count: tweet.bookmarks,

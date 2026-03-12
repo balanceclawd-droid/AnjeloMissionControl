@@ -27,10 +27,41 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ADMIN_USERNAME=your-admin-username
 ADMIN_PASSWORD=your-admin-password
+
+# Optional: LLM-assisted competitive post classification
+LLM_CLASSIFIER_BASE_URL=https://api.openai.com/v1
+LLM_CLASSIFIER_API_KEY=your-openai-compatible-key
+LLM_CLASSIFIER_MODEL=gpt-4o-mini
+LLM_CLASSIFIER_TIMEOUT_MS=12000
 ```
 
 `ADMIN_USERNAME` and `ADMIN_PASSWORD` enable HTTP Basic Auth via `middleware.ts`.
 If they are not set, the app stays open. Once set in Vercel/local envs, the whole app and API require login.
+
+### LLM Classification
+
+The dashboard now supports server-side LLM classification for competitive posts using an OpenAI-compatible `/chat/completions` endpoint.
+
+- If `LLM_CLASSIFIER_BASE_URL`, `LLM_CLASSIFIER_API_KEY`, and `LLM_CLASSIFIER_MODEL` are set, synced and reclassified posts will try the LLM first.
+- If any of those env vars are missing, or the LLM request fails/times out, the app automatically falls back to the built-in heuristic classifier.
+- `LLM_CLASSIFIER_TIMEOUT_MS` is optional and defaults to `12000`.
+
+### Reclassify Existing Posts
+
+You can re-run classification for existing posts with:
+
+```bash
+curl -X POST http://localhost:3000/api/posts/reclassify \
+  -H "Content-Type: application/json" \
+  -d '{"force":true,"limit":250,"refreshPatterns":true}'
+```
+
+Request body options:
+
+- `force` — reclassify posts even if they already have classifications
+- `limit` — max posts to scan (default `500`, capped at `1000`)
+- `refreshPatterns` — rerun pattern detection after reclassification (default `true`)
+- `competitorId` — optional competitor filter
 
 ### 3. Install & Run
 

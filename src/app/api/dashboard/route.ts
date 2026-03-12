@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
+import { getClientReplicationRecommendations } from '@/lib/patterns'
 
 export const dynamic = 'force-dynamic'
 
@@ -109,5 +110,7 @@ export async function GET() {
     active_alerts: active_alerts || 0,
   }
 
-  return NextResponse.json({ alerts: alerts || [], patterns: patterns || [], clientGrid, stats })
+  const recommendations = await getClientReplicationRecommendations()
+
+  return NextResponse.json({ alerts: alerts || [], patterns: patterns || [], clientGrid, stats, recommendations })
 }

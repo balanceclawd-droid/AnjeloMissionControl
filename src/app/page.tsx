@@ -81,6 +81,26 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Client Replication Recommendations */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Replication Recommendations</h2>
+            <p className="text-xs text-neutral-500 mt-1">
+              Pattern-led suggestions for how current clients can copy what is already working in-market
+            </p>
+          </div>
+          <span className="text-xs text-neutral-500">
+            {data.recommendations?.overview?.matched_clients || 0}/{data.recommendations?.overview?.active_clients || 0} clients matched
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          {(data.recommendations?.recommendations || []).map((item: any) => (
+            <ClientRecommendationsCard key={item.client_id} item={item} />
+          ))}
+        </div>
+      </div>
+
       {/* Client Performance Grid */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -97,14 +117,48 @@ export default function Dashboard() {
   )
 }
 
+function ClientRecommendationsCard({ item }: { item: any }) {
+  return (
+    <Link href={`/clients/${item.client_id}`} className="block bg-bg-card border border-border rounded-lg p-5 hover:border-border-light transition-colors">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h3 className="font-semibold text-white">{item.client_name}</h3>
+          <span className="text-xs text-neutral-500">{item.client_vertical?.replace(/_/g, ' ')}</span>
+        </div>
+        <span className="text-[10px] uppercase tracking-wider text-neutral-500">
+          {item.recommendations?.length || 0} ideas
+        </span>
+      </div>
+
+      {item.recommendations?.length ? (
+        <div className="space-y-3">
+          {item.recommendations.map((recommendation: any) => (
+            <div key={`${item.client_id}-${recommendation.pattern_id}`} className="rounded-lg border border-border bg-neutral-950/40 p-3">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-sm font-medium text-white">{recommendation.title}</p>
+                <span className="text-[10px] px-2 py-1 rounded bg-neutral-800 text-neutral-300">
+                  {recommendation.status}
+                </span>
+              </div>
+              <p className="text-xs text-neutral-400 mb-2">{recommendation.why_it_matters}</p>
+              <ul className="space-y-1 text-xs text-neutral-300 list-disc pl-4">
+                {recommendation.replicate_steps.map((step: string, index: number) => (
+                  <li key={index}>{step}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-neutral-600">No strong niche-matched pattern recommendations yet</p>
+      )}
+    </Link>
+  )
+}
+
 function ClientPerformanceCard({ client }: { client: any }) {
   const latest = client.latest_metric?.data
   const prev = client.prev_metric?.data
-
-  const getChange = (current: number, previous: number) => {
-    if (!previous) return undefined
-    return Math.round(((current - previous) / previous) * 100)
-  }
 
   return (
     <Link href={`/clients/${client.id}`} className="block bg-bg-card border border-border rounded-lg p-5 hover:border-border-light transition-colors">
