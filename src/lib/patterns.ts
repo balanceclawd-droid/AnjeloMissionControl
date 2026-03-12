@@ -21,6 +21,61 @@ interface PostClassification {
   flagged_as_pattern: boolean
 }
 
+function formatLabel(value: string) {
+  return value.replace(/_/g, ' ')
+}
+
+function buildPatternDescription(input: {
+  niche: string
+  hook_type: string
+  structure: string
+  cta_type: string
+  competitorCount: number
+  avgScore: number
+}) {
+  const { niche, hook_type, structure, cta_type, competitorCount, avgScore } = input
+  const hook = formatLabel(hook_type)
+  const structureLabel = formatLabel(structure)
+  const cta = formatLabel(cta_type)
+
+  if (hook_type === 'question') {
+    return `${competitorCount} ${niche} competitors are using question-led ${structureLabel} posts to drive ${cta} behaviour. Avg engagement score: ${Math.round(avgScore)}.`
+  }
+  if (hook_type === 'social_proof') {
+    return `${competitorCount} ${niche} competitors are leaning on proof-based ${structureLabel} posts. These posts signal traction/results and average ${Math.round(avgScore)} engagement.`
+  }
+  if (hook_type === 'announcement') {
+    return `${competitorCount} ${niche} competitors are using launch/update style announcements with ${structureLabel} formatting. Avg engagement score: ${Math.round(avgScore)}.`
+  }
+  if (hook_type === 'bold_claim') {
+    return `${competitorCount} ${niche} competitors are using strong opinion / bold-claim hooks in ${structureLabel} posts to push ${cta}. Avg engagement score: ${Math.round(avgScore)}.`
+  }
+  if (hook_type === 'identity') {
+    return `${competitorCount} ${niche} competitors are using identity/status signalling in ${structureLabel} posts. Avg engagement score: ${Math.round(avgScore)}.`
+  }
+
+  return `${competitorCount} ${niche} competitors are repeating a ${hook} + ${structureLabel} + ${cta} pattern. Avg engagement score: ${Math.round(avgScore)}.`
+}
+
+function isActionablePattern(input: {
+  hook_type: string
+  structure: string
+  cta_type: string
+  competitorCount: number
+  avgScore: number
+  postCount: number
+}) {
+  const { hook_type, structure, cta_type, competitorCount, avgScore, postCount } = input
+
+  if (competitorCount < 2 || postCount < 2) return false
+  if (cta_type === 'none' && avgScore < 60) return false
+  if (hook_type === 'statement' && avgScore < 55) return false
+  if (hook_type === 'statement' && structure === 'short-form' && cta_type === 'link_click' && avgScore < 75) return false
+  if (hook_type === 'statement' && structure === 'short-form' && cta_type === 'none') return false
+
+  return true
+}
+
 function normalizeWhitespace(input: string) {
   return input.replace(/\s+/g, ' ').trim()
 }
@@ -246,7 +301,14 @@ export async function detectPatterns() {
     const competitorIds = [...new Set(groupPosts.map(p => p.competitor_id))]
     const highSignalPosts = groupPosts.filter(p => (p.engagement_score || 0) >= 45)
 
-    if (competitorIds.length < 2 || highSignalPosts.length < 2) continue
+    if (!isActionablePattern({
+      hook_type,
+      structure,
+      cta_type,
+      competitorCount: competitorIds.length,
+      avgScore: highSignalPosts.reduce((sum, p) => sum + (p.engagement_score || 0), 0) / Math.max(highSignalPosts.length, 1),
+      postCount: highSignalPosts.length,
+    })) continue
 
     seenKeys.add(key)
 
@@ -267,8 +329,14 @@ export async function detectPatterns() {
     }
 
     const existing = existingMap.get(key)
-    const desc = `${competitorIds.length} ${niche} competitors using ${hook_type} hooks with ${structure} structure and ${cta_type} CTA` +
-      ` (avg score ${Math.round(avgScore)})`
+    const desc = buildPatternDescription({
+      niche,
+      hook_type,
+      structure,
+      cta_type,
+      competitorCount: competitorIds.length,
+      avgScore,
+    })
 
     if (existing) {
       await supabase
@@ -303,8 +371,8 @@ export async function detectPatterns() {
 
       const patternId = newPattern?.id || null
       let severity = 'low'
-      if (avgScore >= 60) severity = 'medium'
-      if (competitorIds.length >= 3 || avgScore >= 80) severity = 'high'
+      if (avgScore >= 60 || competitorIds.length >= 3) severity = 'medium'
+      if (competitorIds.length >= 4 || avgScore >= 80) severity = 'high'
 
       newAlerts.push({
         alert_type: 'pattern_emerging',
