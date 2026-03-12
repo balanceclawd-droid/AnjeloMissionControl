@@ -5,6 +5,24 @@ import { useParams } from 'next/navigation'
 import MetricCard from '@/components/MetricCard'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 
+const VERTICAL_LABELS: Record<string, string> = {
+  trading_platform: 'Trading Platform',
+  ai_trading: 'AI Trading',
+  cex: 'CEX / Exchange',
+  gaming_web3: 'Gaming / Web3',
+}
+
+function parseMetricData(data: unknown) {
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data)
+    } catch {
+      return data
+    }
+  }
+  return data
+}
+
 export default function ClientDetail() {
   const params = useParams()
   const [client, setClient] = useState<any>(null)
@@ -18,9 +36,15 @@ export default function ClientDetail() {
         fetch(`/api/clients/${params.id}/twitter-stats?t=${Date.now()}`).then(r => r.json()).then(setTwitterStats)
       }
     })
-    fetch(`/api/clients/${params.id}/metrics?t=${Date.now()}`).then(r => r.json()).then(m => {
-      setMetrics(m.map((item: any) => ({ ...item, data: JSON.parse(item.data) })).reverse())
-    })
+    fetch(`/api/clients/${params.id}/metrics?t=${Date.now()}`)
+      .then(r => r.json())
+      .then(m => {
+        setMetrics(
+          m
+            .map((item: any) => ({ ...item, data: parseMetricData(item.data) }))
+            .reverse()
+        )
+      })
   }, [params.id])
 
   if (!client) return <div className="text-neutral-500">Loading...</div>
@@ -40,7 +64,7 @@ export default function ClientDetail() {
           </div>
           <h1 className="text-2xl font-bold text-white">{client.name}</h1>
           <span className="text-xs text-neutral-500">
-            {client.vertical === 'trading_platform' ? 'Trading Platform' : client.vertical === 'ai_trading' ? 'AI Trading' : client.vertical === 'cex' ? 'CEX / Exchange' : 'Gaming / Web3'}
+            {VERTICAL_LABELS[client.vertical] || client.vertical}
           </span>
         </div>
         <Link
@@ -216,7 +240,6 @@ export default function ClientDetail() {
             })}
           </div>
 
-          {/* Engagement Chart */}
           <div className="bg-bg-card border border-border rounded-lg p-6">
             <h3 className="text-sm font-medium text-white mb-4">Engagement Rates by Platform</h3>
             <ResponsiveContainer width="100%" height={250}>
@@ -234,7 +257,6 @@ export default function ClientDetail() {
             </ResponsiveContainer>
           </div>
 
-          {/* Follower Trend */}
           {metrics.length > 1 && (
             <div className="bg-bg-card border border-border rounded-lg p-6">
               <h3 className="text-sm font-medium text-white mb-4">Follower Growth Trend</h3>
@@ -263,7 +285,6 @@ export default function ClientDetail() {
         <p className="text-neutral-500">No metrics submitted yet. Submit your first weekly report.</p>
       )}
 
-      {/* Twitter Growth */}
       {client.twitter_url && twitterStats && twitterStats.currentFollowers !== null && (
         <div className="bg-bg-card border border-border rounded-lg p-6 space-y-4">
           <h3 className="text-sm font-medium text-white">Twitter Growth</h3>
@@ -299,8 +320,6 @@ export default function ClientDetail() {
           )}
         </div>
       )}
-
-
     </div>
   )
 }
