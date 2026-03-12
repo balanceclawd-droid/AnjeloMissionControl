@@ -1,26 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
+import { sanitizePatternPostIds } from '@/lib/patterns'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  // Get the pattern to find post_ids
+  const patternId = Number(params.id)
+  if (Number.isNaN(patternId)) {
+    return NextResponse.json({ error: 'Invalid pattern ID' }, { status: 400 })
+  }
+
+  const [sanitizedPattern] = await sanitizePatternPostIds(patternId)
+
   const { data: pattern, error: patternErr } = await supabase
     .from('patterns')
     .select('post_ids')
-    .eq('id', params.id)
+    .eq('id', patternId)
     .single()
 
   if (patternErr || !pattern) {
     return NextResponse.json({ error: 'Pattern not found' }, { status: 404 })
   }
 
-  const postIds = pattern.post_ids || []
+  const postIds = (sanitizedPattern?.post_ids || pattern.post_ids || []) as number[]
   if (postIds.length === 0) {
     return NextResponse.json([])
   }
 
-  // Fetch the actual posts with competitor info
   const { data: posts, error: postsErr } = await supabase
     .from('competitive_posts')
     .select('id, content, engagement_score, posted_at, bookmark_count, quote_count, conversation_depth, twitter_post_id, competitors(name, niche)')

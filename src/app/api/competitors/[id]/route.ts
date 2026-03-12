@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
+import { sanitizePatternPostIds } from '@/lib/patterns'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const { data: competitor, error } = await supabase
@@ -43,6 +44,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (postsError) {
     return NextResponse.json({ error: postsError.message }, { status: 500 })
   }
+
+  await sanitizePatternPostIds()
 
   const { error: deleteError } = await supabase
     .from('competitors')

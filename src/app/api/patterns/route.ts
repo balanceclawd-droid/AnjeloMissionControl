@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { detectPatterns } from '@/lib/patterns'
+import { detectPatterns, sanitizePatternPostIds } from '@/lib/patterns'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const niche = searchParams.get('niche')
   const status = searchParams.get('status')
+
+  await sanitizePatternPostIds()
 
   let query = supabase.from('patterns').select('*')
 

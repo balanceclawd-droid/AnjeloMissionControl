@@ -11,8 +11,60 @@ interface Post {
   niche?: string
 }
 
+export async function sanitizePatternPostIds(patternId?: number) {
+  let query = supabase.from('patterns').select('id, post_ids')
+  if (patternId != null) query = query.eq('id', patternId)
+
+  const { data: patterns, error } = await query
+  if (error) throw error
+
+  if (!patterns?.length) return []
+
+  const allPostIds = Array.from(
+    new Set(
+      patterns.flatMap((pattern: any) =>
+        Array.isArray(pattern.post_ids)
+          ? pattern.post_ids.map((id: any) => Number(id)).filter((id: number) => !Number.isNaN(id))
+          : []
+      )
+    )
+  )
+
+  const validPostIds = new Set<number>()
+  if (allPostIds.length > 0) {
+    const { data: posts, error: postsError } = await supabase
+      .from('competitive_posts')
+      .select('id')
+      .in('id', allPostIds)
+
+    if (postsError) throw postsError
+    for (const post of posts || []) validPostIds.add(Number((post as any).id))
+  }
+
+  const updatedPatterns = []
+  for (const pattern of patterns as any[]) {
+    const originalIds = Array.isArray(pattern.post_ids)
+      ? pattern.post_ids.map((id: any) => Number(id)).filter((id: number) => !Number.isNaN(id))
+      : []
+    const sanitizedIds = originalIds.filter((id: number) => validPostIds.has(id))
+
+    if (JSON.stringify(originalIds) !== JSON.stringify(sanitizedIds)) {
+      const { error: updateError } = await supabase
+        .from('patterns')
+        .update({ post_ids: sanitizedIds })
+        .eq('id', pattern.id)
+
+      if (updateError) throw updateError
+      updatedPatterns.push({ ...pattern, post_ids: sanitizedIds })
+    } else {
+      updatedPatterns.push(pattern)
+    }
+  }
+
+  return updatedPatterns
+}
+
 export async function detectPatterns() {
-  // Get all posts with competitor niche info
   const { data: rawPosts } = await supabase
     .from('competitive_posts')
     .select('*, competitors!inner(niche)')
@@ -26,7 +78,6 @@ export async function detectPatterns() {
     niche: p.competitors?.niche,
   }))
 
-  // Group by hook_type + structure + cta_type
   const groups: Record<string, Post[]> = {}
   for (const post of posts) {
     const key = `${post.hook_type}|${post.structure}|${post.cta_type}`
@@ -46,7 +97,6 @@ export async function detectPatterns() {
     const competitorIds = [...new Set(groupPosts.map(p => p.competitor_id))]
     const avgScore = groupPosts.reduce((sum, p) => sum + (p.engagement_score || 0), 0) / groupPosts.length
 
-    // Check if pattern exists
     const { data: existing } = await supabase
       .from('patterns')
       .select('*')
@@ -58,7 +108,6 @@ export async function detectPatterns() {
     const now = new Date().toISOString()
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    // Determine status
     const recentPosts = groupPosts.filter(p => p.posted_at >= sevenDaysAgo)
     let status = 'emerging'
     if (recentPosts.length >= 3) status = 'active'
@@ -114,7 +163,6 @@ export async function detectPatterns() {
       })
     }
 
-    // Check for accelerating patterns
     if (recentPosts.length >= 3 && existing) {
       newAlerts.push({
         alert_type: 'pattern_accelerating',
@@ -125,7 +173,6 @@ export async function detectPatterns() {
       })
     }
 
-    // High engagement alert
     if (avgScore > 75) {
       const topPost = groupPosts.sort((a, b) => b.engagement_score - a.engagement_score)[0]
       if (topPost && topPost.engagement_score > 85) {
@@ -140,7 +187,6 @@ export async function detectPatterns() {
     }
   }
 
-  // Insert new alerts (avoid duplicates by checking recent ones)
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   for (const alert of newAlerts) {
     const { data: recent } = await supabase
