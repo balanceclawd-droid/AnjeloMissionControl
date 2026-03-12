@@ -36,6 +36,12 @@ function NextSyncCountdown() {
 const GAMING_NICHES = ['Gaming']
 const TRADING_NICHES = ['CEX', 'DEX', 'DeFi', 'Memecoin']
 
+function getTwitterHandle(url: string) {
+  return url
+    .replace('https://twitter.com/', '')
+    .replace('https://x.com/', '')
+}
+
 export default function CompetitorsPage() {
   const [competitors, setCompetitors] = useState<any[]>([])
   const [showForm, setShowForm] = useState(false)
@@ -197,10 +203,10 @@ export default function CompetitorsPage() {
                 <label className="block text-xs text-neutral-500 mb-1">Twitter Handle</label>
                 <input
                   type="text"
-                  value={form.account_url.replace('https://twitter.com/', '')}
+                  value={getTwitterHandle(form.account_url)}
                   onChange={e => {
                     const handle = e.target.value.replace(/^@/, '')
-                    setForm({...form, account_url: handle ? `https://twitter.com/${handle}` : ''})
+                    setForm({...form, account_url: handle ? `https://x.com/${handle}` : ''})
                   }}
                   className="w-full"
                   placeholder="@binance"

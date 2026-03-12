@@ -129,7 +129,7 @@ export default function ClientDetail() {
         </>
       ) : client.vertical === 'ai_trading' && latest ? (
         <>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             <MetricCard
               label="Onboarded Users"
               value={latest.onboarded_users?.toLocaleString()}
@@ -139,6 +139,11 @@ export default function ClientDetail() {
               label="Deposits"
               value={latest.deposits?.toLocaleString()}
               change={prev ? getChange(latest.deposits, prev.deposits) : undefined}
+            />
+            <MetricCard
+              label="Active Users"
+              value={latest.active_users != null ? latest.active_users.toLocaleString() : 'N/A'}
+              change={prev?.active_users != null && latest.active_users != null ? getChange(latest.active_users, prev.active_users) : undefined}
             />
             <MetricCard
               label="Conversion Rate"

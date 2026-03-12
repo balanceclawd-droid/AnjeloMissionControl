@@ -28,6 +28,7 @@ export default function SubmitMetrics() {
   const [aiTradingData, setAiTradingData] = useState({
     onboarded_users: '',
     deposits: '',
+    active_users: '',
     notes: ''
   })
 
@@ -73,6 +74,7 @@ export default function SubmitMetrics() {
         return {
           onboarded_users: Number(aiTradingData.onboarded_users),
           deposits: Number(aiTradingData.deposits),
+          active_users: aiTradingData.active_users ? Number(aiTradingData.active_users) : null,
           notes: aiTradingData.notes,
         }
       case 'gaming_web3':
@@ -201,7 +203,7 @@ export default function SubmitMetrics() {
         {client.vertical === 'ai_trading' && (
           <div className="bg-bg-card border border-border rounded-lg p-6 space-y-4">
             <h3 className="text-sm font-medium text-white">AI Trading Metrics</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs text-neutral-500 mb-1">Onboarded Users</label>
                 <input type="number" value={aiTradingData.onboarded_users} onChange={e => setAiTradingData({ ...aiTradingData, onboarded_users: e.target.value })} required className="w-full" placeholder="103" />
@@ -209,6 +211,10 @@ export default function SubmitMetrics() {
               <div>
                 <label className="block text-xs text-neutral-500 mb-1">Deposits</label>
                 <input type="number" value={aiTradingData.deposits} onChange={e => setAiTradingData({ ...aiTradingData, deposits: e.target.value })} required className="w-full" placeholder="15" />
+              </div>
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Active Users (optional)</label>
+                <input type="number" value={aiTradingData.active_users} onChange={e => setAiTradingData({ ...aiTradingData, active_users: e.target.value })} className="w-full" placeholder="8" />
               </div>
             </div>
             <div>

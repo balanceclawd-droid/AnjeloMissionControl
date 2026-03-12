@@ -141,10 +141,17 @@ function ClientPerformanceCard({ client }: { client: any }) {
             {prev && <TrendIndicator current={latest.deposits} previous={prev.deposits} />}
           </div>
           <div>
-            <p className="text-xs text-neutral-500">Conv. Rate</p>
+            <p className="text-xs text-neutral-500">{latest.active_users != null ? 'Active Users' : 'Conv. Rate'}</p>
             <p className="text-lg font-semibold text-white">
-              {latest.onboarded_users && latest.deposits ? `${((latest.deposits / latest.onboarded_users) * 100).toFixed(1)}%` : 'N/A'}
+              {latest.active_users != null
+                ? latest.active_users.toLocaleString()
+                : latest.onboarded_users && latest.deposits
+                  ? `${((latest.deposits / latest.onboarded_users) * 100).toFixed(1)}%`
+                  : 'N/A'}
             </p>
+            {latest.active_users != null && prev?.active_users != null && (
+              <TrendIndicator current={latest.active_users} previous={prev.active_users} />
+            )}
           </div>
         </div>
       ) : client.vertical === 'gaming_web3' && (client.twitter_snapshots?.length || latest) ? (
