@@ -42,6 +42,11 @@ export default function Dashboard() {
         <p className="text-sm text-neutral-500 mt-1">Real-time competitive intelligence & client performance</p>
       </div>
 
+      {/* Research Alerts */}
+      {data.researchAlerts && (data.researchAlerts.pending_suggestions > 0 || data.researchAlerts.latest_report) && (
+        <ResearchAlertsSection researchAlerts={data.researchAlerts} />
+      )}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-5 gap-4">
         <MetricCard label="Active Clients" value={data.stats.total_clients} />
@@ -112,6 +117,37 @@ export default function Dashboard() {
             <ClientPerformanceCard key={client.id} client={client} />
           ))}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function ResearchAlertsSection({ researchAlerts }: { researchAlerts: any }) {
+  return (
+    <div className="bg-bg-card border border-border rounded-lg p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm">🔭</span>
+          <h2 className="text-sm font-semibold text-white">Research Alerts</h2>
+        </div>
+        <Link href="/research" className="text-xs text-accent-red hover:underline">View Research</Link>
+      </div>
+      <div className="flex items-start gap-6 flex-wrap">
+        {researchAlerts.pending_suggestions > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-bold text-white">{researchAlerts.pending_suggestions}</span>
+            <div>
+              <p className="text-xs text-neutral-400">Pending competitor suggestion{researchAlerts.pending_suggestions !== 1 ? 's' : ''}</p>
+              <Link href="/research" className="text-xs text-accent-red hover:underline">Review now →</Link>
+            </div>
+          </div>
+        )}
+        {researchAlerts.latest_report && (
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-neutral-500 mb-0.5">Latest daily report</p>
+            <p className="text-xs text-neutral-300 line-clamp-2">{researchAlerts.latest_report.summary}</p>
+          </div>
+        )}
       </div>
     </div>
   )

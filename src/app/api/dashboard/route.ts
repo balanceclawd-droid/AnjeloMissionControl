@@ -112,5 +112,23 @@ export async function GET() {
 
   const recommendations = await getClientReplicationRecommendations()
 
-  return NextResponse.json({ alerts: alerts || [], patterns: patterns || [], clientGrid, stats, recommendations })
+  // Research alerts: pending suggestions count + latest daily report headline
+  const { count: pendingSuggestions } = await supabase
+    .from('competitor_suggestions')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'pending')
+
+  const { data: latestReports } = await supabase
+    .from('research_reports')
+    .select('id, summary, created_at')
+    .eq('report_type', 'daily')
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  const researchAlerts = {
+    pending_suggestions: pendingSuggestions || 0,
+    latest_report: latestReports?.[0] || null,
+  }
+
+  return NextResponse.json({ alerts: alerts || [], patterns: patterns || [], clientGrid, stats, recommendations, researchAlerts })
 }

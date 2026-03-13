@@ -9,6 +9,7 @@ const navItems = [
   { href: '/posts', label: 'Posts', icon: '■' },
   { href: '/patterns', label: 'Patterns', icon: '◎' },
   { href: '/alerts', label: 'Alerts', icon: '⚡' },
+  { href: '/research', label: 'Research', icon: '🔭' },
 ]
 
 export default function Sidebar() {
