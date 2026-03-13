@@ -59,28 +59,39 @@ export async function POST(req: NextRequest) {
     keyword_id: keywordMap.get(r.source.toLowerCase()) || null,
   }))
 
-  // Upsert — conflict on tweet_url (skip if empty url)
+  // Dedupe by tweet_url using select-then-insert pattern (partial index won't work with onConflict)
   const withUrl = rowsWithKeyword.filter(r => r.tweet_url)
   const withoutUrl = rowsWithKeyword.filter(r => !r.tweet_url)
 
   let inserted = 0
+
   if (withUrl.length > 0) {
-    const { data: upserted, error } = await supabase
+    const urls = withUrl.map(r => r.tweet_url)
+    const { data: existing } = await supabase
       .from('market_intelligence_posts')
-      .upsert(withUrl, { onConflict: 'tweet_url', ignoreDuplicates: true })
-      .select('id')
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    inserted += upserted?.length || 0
+      .select('tweet_url')
+      .in('tweet_url', urls)
+    const existingUrls = new Set((existing || []).map((r: any) => r.tweet_url))
+    const newRows = withUrl.filter(r => !existingUrls.has(r.tweet_url))
+    if (newRows.length > 0) {
+      const { data: ins, error } = await supabase
+        .from('market_intelligence_posts')
+        .insert(newRows)
+        .select('id')
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      inserted += ins?.length || 0
+    }
   }
+
   if (withoutUrl.length > 0) {
-    const { data: inserted2, error } = await supabase
+    const { data: ins2, error } = await supabase
       .from('market_intelligence_posts')
       .insert(withoutUrl)
       .select('id')
     if (error && error.code !== '23505') {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-    inserted += inserted2?.length || 0
+    inserted += ins2?.length || 0
   }
 
   // Detect high-engagement accounts not already in competitors table
