@@ -48,10 +48,15 @@ const STRUCTURE_TYPES = [
 const CTA_TYPES = ['engagement', 'conversion', 'follow', 'link_click', 'none'] as const
 const VISUAL_TYPES = ['video', 'image', 'carousel', 'media_hint', 'text_only'] as const
 
-const LLM_BASE_URL = process.env.LLM_CLASSIFIER_BASE_URL?.trim()
-const LLM_API_KEY = process.env.LLM_CLASSIFIER_API_KEY?.trim()
-const LLM_MODEL = process.env.LLM_CLASSIFIER_MODEL?.trim()
-const LLM_TIMEOUT_MS = Number(process.env.LLM_CLASSIFIER_TIMEOUT_MS || 12000)
+// Read LLM config at call time (not module load) so Vercel picks up env vars correctly
+function getLlmConfig() {
+  return {
+    baseUrl: process.env.LLM_CLASSIFIER_BASE_URL?.trim(),
+    apiKey: process.env.LLM_CLASSIFIER_API_KEY?.trim(),
+    model: process.env.LLM_CLASSIFIER_MODEL?.trim(),
+    timeoutMs: Number(process.env.LLM_CLASSIFIER_TIMEOUT_MS || 12000),
+  }
+}
 
 function formatLabel(value: string) {
   return value.replace(/_/g, ' ')
@@ -221,7 +226,8 @@ function buildHeuristicClassification(input: {
 }
 
 function hasLlmClassifierConfig() {
-  return Boolean(LLM_BASE_URL && LLM_API_KEY && LLM_MODEL)
+  const { baseUrl, apiKey, model } = getLlmConfig()
+  return Boolean(baseUrl && apiKey && model)
 }
 
 function extractJsonObject(text: string) {
@@ -281,18 +287,19 @@ async function fetchLlmClassification(input: {
 }) {
   if (!hasLlmClassifierConfig()) return null
 
+  const { baseUrl, apiKey, model: llmModel, timeoutMs } = getLlmConfig()
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const response = await fetch(`${LLM_BASE_URL!.replace(/\/$/, '')}/chat/completions`, {
+    const response = await fetch(`${baseUrl!.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${LLM_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: LLM_MODEL,
+        model: llmModel,
         temperature: 0.1,
         messages: [
           {
