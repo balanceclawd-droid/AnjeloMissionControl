@@ -31,20 +31,32 @@ export async function POST(
   }
 
   if (action === 'add') {
-    // Create competitor in the competitors table
-    const { error: compErr } = await supabase
-      .from('competitors')
-      .upsert({
-        name: suggestion.display_name || suggestion.handle,
-        niche: suggestion.niche,
-        platform: 'twitter',
-        account_url: `https://x.com/${suggestion.handle.replace('@', '')}`,
-        tracked_type: 'specific',
-      }, { onConflict: 'name', ignoreDuplicates: true })
+    const handle = suggestion.handle.replace('@', '').toLowerCase()
+    const accountUrl = `https://x.com/${handle}`
 
-    if (compErr && compErr.code !== '23505') {
-      return NextResponse.json({ error: compErr.message }, { status: 500 })
+    // Check if already exists by account_url or handle match
+    const { data: existing } = await supabase
+      .from('competitors')
+      .select('id')
+      .or(`account_url.ilike.%${handle}%`)
+      .limit(1)
+
+    if (!existing || existing.length === 0) {
+      const { error: compErr } = await supabase
+        .from('competitors')
+        .insert({
+          name: suggestion.display_name || suggestion.handle,
+          niche: suggestion.niche,
+          platform: 'twitter',
+          account_url: accountUrl,
+          tracked_type: 'specific',
+        })
+
+      if (compErr && compErr.code !== '23505') {
+        return NextResponse.json({ error: compErr.message }, { status: 500 })
+      }
     }
+    // If already exists, still mark as added below
   }
 
   // Update suggestion status
