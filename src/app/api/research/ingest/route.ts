@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const keyword = source.startsWith('query:') ? source.slice(6) : null
 
     return {
-      handle: (t.handle || '').toLowerCase(),
+      handle: (t.handle || '').toLowerCase().replace(/^@/, ''),
       display_name: t.display_name || '',
       content: t.tweet_text || t.content || '',
       tweet_url: t.tweet_url || '',
@@ -96,12 +96,13 @@ export async function POST(req: NextRequest) {
 
   // Detect high-engagement accounts not already in competitors table
   const highEngagement = enriched.filter(t => t.engagement_score >= 60)
-  const uniqueHandles = [...new Set(highEngagement.map(t => (t.handle || '').toLowerCase()))].filter(Boolean)
+  // Normalise: strip @ prefix for consistent comparison
+  const uniqueHandles = [...new Set(highEngagement.map(t => (t.handle || '').toLowerCase().replace(/^@/, '')))].filter(Boolean)
 
   let suggestionsCreated = 0
 
   if (uniqueHandles.length > 0) {
-    // Check existing competitors
+    // Check existing competitors — normalise handles from account_url
     const { data: existingComp } = await supabase
       .from('competitors')
       .select('account_url')
@@ -114,19 +115,19 @@ export async function POST(req: NextRequest) {
       }).filter(Boolean)
     )
 
-    // Check existing suggestions
+    // Check existing suggestions — normalise @ prefix
     const { data: existingSugg } = await supabase
       .from('competitor_suggestions')
       .select('handle')
       .in('handle', uniqueHandles)
 
-    const existingSuggHandles = new Set((existingSugg || []).map((s: any) => s.handle.toLowerCase()))
+    const existingSuggHandles = new Set((existingSugg || []).map((s: any) => s.handle.toLowerCase().replace(/^@/, '')))
 
     // Determine niche from source keyword → keywords table
     // Group tweets by handle to calculate avg engagement and pick sample post
     const handleGroups: Record<string, any[]> = {}
     for (const t of enriched) {
-      const h = (t.handle || '').toLowerCase()
+      const h = (t.handle || '').toLowerCase().replace(/^@/, '')
       if (!handleGroups[h]) handleGroups[h] = []
       handleGroups[h].push(t)
     }
@@ -151,8 +152,8 @@ export async function POST(req: NextRequest) {
         .single()
 
       suggestions.push({
-        handle,
-        display_name: best.display_name || handle,
+        handle: handle.replace(/^@/, ''),
+        display_name: (best.display_name || handle).replace(/^@/, ''),
         niche: matchedKw?.niche || 'Other',
         avg_engagement: avgEng,
         sample_post: (best.tweet_text || best.content || '').slice(0, 280),
