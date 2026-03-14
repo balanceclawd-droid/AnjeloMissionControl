@@ -42,8 +42,8 @@ const severityBar = (score: number) => {
   return 'bg-blue-500'
 }
 
-export default function PatternCard({ pattern }: { pattern: Pattern }) {
-  const [expanded, setExpanded] = useState(false)
+export default function PatternCard({ pattern, defaultExpanded = false }: { pattern: Pattern; defaultExpanded?: boolean }) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
   const [posts, setPosts] = useState<PostDetail[]>([])
   const [loading, setLoading] = useState(false)
 

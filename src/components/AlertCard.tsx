@@ -4,6 +4,7 @@ interface Alert {
   severity: string
   message: string
   niche?: string
+  pattern_id?: number
   created_at: string
   dismissed: number
 }
@@ -35,6 +36,9 @@ function getAlertLink(alert: Alert): { href: string; label: string } | null {
     return { href: `https://x.com/i/status/${tweetId}`, label: 'View on X ↗' }
   }
   if (alert.alert_type.startsWith('pattern')) {
+    if (alert.pattern_id) {
+      return { href: `/patterns?pattern=${alert.pattern_id}`, label: 'View Pattern ↗' }
+    }
     const params = alert.niche ? `?niche=${encodeURIComponent(alert.niche)}` : ''
     return { href: `/patterns${params}`, label: 'View Patterns ↗' }
   }

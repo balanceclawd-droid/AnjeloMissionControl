@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import PatternCard from '@/components/PatternCard'
 
 const niches = ['All', 'CEX', 'DEX', 'Gaming', 'Memecoin', 'NFT', 'DeFi']
@@ -11,7 +12,10 @@ const timeframes = [
   { label: 'Last 90 days', value: '90' },
 ]
 
-export default function PatternsPage() {
+function PatternsContent() {
+  const searchParams = useSearchParams()
+  const targetPatternId = searchParams.get('pattern') ? parseInt(searchParams.get('pattern')!) : null
+
   const [patterns, setPatterns] = useState<any[]>([])
   const [filterNiche, setFilterNiche] = useState('All')
   const [filterStatus, setFilterStatus] = useState('All')
@@ -25,6 +29,16 @@ export default function PatternsPage() {
     if (filterDays) params.set('days', filterDays)
     fetch(`/api/patterns?${params.toString()}`).then(r => r.json()).then(setPatterns)
   }, [filterNiche, filterStatus, filterDays])
+
+  // Scroll to and highlight target pattern after load
+  useEffect(() => {
+    if (targetPatternId && patterns.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(`pattern-${targetPatternId}`)
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+    }
+  }, [targetPatternId, patterns])
 
   const runDetection = async () => {
     setDetecting(true)
@@ -78,9 +92,21 @@ export default function PatternsPage() {
         {patterns.length === 0 ? (
           <p className="text-neutral-600 text-sm col-span-2 py-8 text-center">No patterns found</p>
         ) : (
-          patterns.map(pattern => <PatternCard key={pattern.id} pattern={pattern} />)
+          patterns.map(pattern => (
+            <div key={pattern.id} id={`pattern-${pattern.id}`}>
+              <PatternCard pattern={pattern} defaultExpanded={pattern.id === targetPatternId} />
+            </div>
+          ))
         )}
       </div>
     </div>
+  )
+}
+
+export default function PatternsPage() {
+  return (
+    <Suspense fallback={<div className="text-neutral-600 text-sm py-8 text-center">Loading...</div>}>
+      <PatternsContent />
+    </Suspense>
   )
 }
