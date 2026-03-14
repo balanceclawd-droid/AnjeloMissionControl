@@ -4,19 +4,27 @@ import PatternCard from '@/components/PatternCard'
 
 const niches = ['All', 'CEX', 'DEX', 'Gaming', 'Memecoin', 'NFT', 'DeFi']
 const statuses = ['All', 'emerging', 'active', 'declining', 'dormant']
+const timeframes = [
+  { label: 'All time', value: '' },
+  { label: 'Last 7 days', value: '7' },
+  { label: 'Last 30 days', value: '30' },
+  { label: 'Last 90 days', value: '90' },
+]
 
 export default function PatternsPage() {
   const [patterns, setPatterns] = useState<any[]>([])
   const [filterNiche, setFilterNiche] = useState('All')
   const [filterStatus, setFilterStatus] = useState('All')
+  const [filterDays, setFilterDays] = useState('')
   const [detecting, setDetecting] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams()
     if (filterNiche !== 'All') params.set('niche', filterNiche)
     if (filterStatus !== 'All') params.set('status', filterStatus)
+    if (filterDays) params.set('days', filterDays)
     fetch(`/api/patterns?${params.toString()}`).then(r => r.json()).then(setPatterns)
-  }, [filterNiche, filterStatus])
+  }, [filterNiche, filterStatus, filterDays])
 
   const runDetection = async () => {
     setDetecting(true)
@@ -45,7 +53,7 @@ export default function PatternsPage() {
         </button>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex gap-4 flex-wrap">
         <div className="flex items-center gap-2">
           <label className="text-xs text-neutral-500">Niche:</label>
           <select value={filterNiche} onChange={e => setFilterNiche(e.target.value)} className="text-sm">
@@ -56,6 +64,12 @@ export default function PatternsPage() {
           <label className="text-xs text-neutral-500">Status:</label>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-sm">
             {statuses.map(s => <option key={s} value={s}>{s === 'All' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-neutral-500">Timeframe:</label>
+          <select value={filterDays} onChange={e => setFilterDays(e.target.value)} className="text-sm">
+            {timeframes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
       </div>

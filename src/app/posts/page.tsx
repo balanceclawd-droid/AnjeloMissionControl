@@ -96,6 +96,25 @@ export default function PostsPage() {
       render: (row: any) => row.flagged_as_pattern ? (
         <span className="text-xs bg-accent-red/20 text-accent-red px-2 py-1 rounded">Pattern</span>
       ) : '—'
+    },
+    {
+      key: 'post_url',
+      label: 'Link',
+      sortable: false,
+      render: (row: any) => {
+        const url = row.post_url || (row.twitter_post_id ? `https://x.com/i/status/${row.twitter_post_id}` : null)
+        return url ? (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent-red hover:underline text-xs"
+            onClick={e => e.stopPropagation()}
+          >
+            View ↗
+          </a>
+        ) : <span className="text-neutral-600">—</span>
+      }
     }
   ]
 
