@@ -460,6 +460,11 @@ export async function backfillPostClassifications(options?: {
       continue
     }
 
+    // Capture LLM errors for debugging
+    if (classified.classifier_source === 'heuristic_fallback' && classified.classifier_error) {
+      errors.push(`LLM fallback on post ${post.id}: ${classified.classifier_error}`)
+    }
+
     updated++
     if (classified.classifier_source === 'llm') llmClassified++
     else heuristicClassified++

@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       reclassified,
       detection,
+      llmErrors: reclassified.errors || [],
     })
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Reclassification failed' }, { status: 500 })
