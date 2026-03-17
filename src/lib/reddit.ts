@@ -84,13 +84,15 @@ export async function scrapeSubreddit(
 }
 
 export function detectTrends(posts: RedditPost[], niche: string) {
-  const topicCounts: Record<string, { count: number; scores: number[]; titles: string[] }> = {}
+  const topicCounts: Record<string, { count: number; scores: number[]; samples: {title: string; permalink: string}[] }> = {}
   for (const post of posts) {
     for (const topic of post.topics) {
-      if (!topicCounts[topic]) topicCounts[topic] = { count: 0, scores: [], titles: [] }
+      if (!topicCounts[topic]) topicCounts[topic] = { count: 0, scores: [], samples: [] }
       topicCounts[topic].count++
       topicCounts[topic].scores.push(post.score)
-      if (topicCounts[topic].titles.length < 3) topicCounts[topic].titles.push(post.title)
+      if (topicCounts[topic].samples.length < 3) {
+        topicCounts[topic].samples.push({ title: post.title, permalink: post.permalink })
+      }
     }
   }
   return Object.entries(topicCounts)
@@ -100,7 +102,7 @@ export function detectTrends(posts: RedditPost[], niche: string) {
       topic,
       mention_count: v.count,
       avg_score: Math.round(v.scores.reduce((a, b) => a + b, 0) / v.scores.length),
-      sample_titles: v.titles,
+      sample_titles: v.samples, // now [{title, permalink}] objects
     }))
     .sort((a, b) => b.mention_count - a.mention_count)
     .slice(0, 20)

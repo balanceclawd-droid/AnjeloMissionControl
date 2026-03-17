@@ -616,9 +616,19 @@ function RedditTrendingSubTab() {
               </div>
               {t.sample_titles?.length > 0 && (
                 <ul className="space-y-1">
-                  {(t.sample_titles as string[]).slice(0, 3).map((title, i) => (
-                    <li key={i} className="text-xs text-neutral-500 line-clamp-1 border-l border-border/60 pl-2">{title}</li>
-                  ))}
+                  {(t.sample_titles as any[]).slice(0, 3).map((item, i) => {
+                    const title = typeof item === 'string' ? item : item?.title || ''
+                    const permalink = typeof item === 'string' ? null : item?.permalink || null
+                    return (
+                      <li key={i} className="text-xs text-neutral-500 line-clamp-1 border-l border-border/60 pl-2">
+                        {permalink ? (
+                          <a href={permalink} target="_blank" rel="noopener noreferrer" className="hover:text-accent-red hover:underline transition-colors">
+                            {title}
+                          </a>
+                        ) : title}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </div>
