@@ -5,6 +5,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const niche = searchParams.get('niche')
   const subredditFilter = searchParams.get('subreddit')
+  const topicFilter = searchParams.get('topic')
   const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100)
   const sort = searchParams.get('sort') === 'date' ? 'created_utc' : 'score'
 
@@ -31,6 +32,10 @@ export async function GET(req: NextRequest) {
 
   if (subredditIds) {
     query = query.in('subreddit_id', subredditIds)
+  }
+
+  if (topicFilter) {
+    query = query.contains('topics', [topicFilter.toLowerCase()])
   }
 
   const { data, error } = await query

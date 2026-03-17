@@ -151,12 +151,20 @@ function RedditTrendingCard() {
       {topics.length === 0 ? (
         <p className="text-xs text-neutral-500">No Reddit data yet — run a scrape from <Link href="/research?tab=reddit" className="text-accent-red hover:underline">Research</Link></p>
       ) : (
-        <div className="flex flex-wrap gap-3">
+        <div className="space-y-2">
           {topics.map((t: any) => (
-            <div key={t.id} className="flex items-center gap-2 bg-neutral-900 rounded-lg px-3 py-2">
-              <span className="text-sm font-medium text-white">{t.topic}</span>
-              <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">{t.niche}</span>
-              <span className="text-xs text-neutral-500">{t.mention_count}×</span>
+            <div key={t.id} className="flex items-center justify-between gap-3 bg-neutral-900 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-medium text-white truncate">{t.topic}</span>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 shrink-0">{t.niche}</span>
+                <span className="text-xs text-neutral-500 shrink-0">{t.mention_count}×</span>
+              </div>
+              <Link
+                href={`/research?tab=reddit&topic=${encodeURIComponent(t.topic)}`}
+                className="text-xs text-accent-red hover:underline shrink-0"
+              >
+                View posts →
+              </Link>
             </div>
           ))}
         </div>

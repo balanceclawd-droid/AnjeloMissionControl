@@ -472,7 +472,9 @@ function SuggestionsTab() {
 type RedditSubTab = 'trending' | 'posts' | 'subreddits'
 
 function RedditTab() {
-  const [subTab, setSubTab] = useState<RedditSubTab>('trending')
+  const searchParams = useSearchParams()
+  const topicParam = searchParams.get('topic') || ''
+  const [subTab, setSubTab] = useState<RedditSubTab>(topicParam ? 'posts' : 'trending')
 
   return (
     <div className="space-y-4">
@@ -494,7 +496,7 @@ function RedditTab() {
       </div>
 
       {subTab === 'trending' && <RedditTrendingSubTab />}
-      {subTab === 'posts' && <RedditPostsSubTab />}
+      {subTab === 'posts' && <RedditPostsSubTab initialTopic={topicParam} />}
       {subTab === 'subreddits' && <RedditSubredditsSubTab />}
     </div>
   )
@@ -627,11 +629,12 @@ function RedditTrendingSubTab() {
   )
 }
 
-function RedditPostsSubTab() {
+function RedditPostsSubTab({ initialTopic = '' }: { initialTopic?: string }) {
   const [posts, setPosts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [niche, setNiche] = useState('')
   const [subredditFilter, setSubredditFilter] = useState('')
+  const [topicFilter, setTopicFilter] = useState(initialTopic)
   const [sort, setSort] = useState<'score' | 'date'>('score')
   const [niches, setNiches] = useState<string[]>([])
 
@@ -650,11 +653,12 @@ function RedditPostsSubTab() {
     const params = new URLSearchParams({ limit: '50', sort })
     if (niche) params.set('niche', niche)
     if (subredditFilter.trim()) params.set('subreddit', subredditFilter.trim())
+    if (topicFilter.trim()) params.set('topic', topicFilter.trim())
     fetch(`/api/reddit/posts?${params}`)
       .then(r => r.json())
       .then(d => { setPosts(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [niche, subredditFilter, sort])
+  }, [niche, subredditFilter, topicFilter, sort])
 
   return (
     <div className="space-y-4">
@@ -674,6 +678,18 @@ function RedditPostsSubTab() {
           placeholder="Filter subreddit..."
           className="bg-bg-hover border border-border rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-neutral-600 w-40"
         />
+        <input
+          type="text"
+          value={topicFilter}
+          onChange={e => setTopicFilter(e.target.value)}
+          placeholder="Filter topic..."
+          className="bg-bg-hover border border-border rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-neutral-600 w-36"
+        />
+        {topicFilter && (
+          <button onClick={() => setTopicFilter('')} className="text-xs text-neutral-500 hover:text-white">
+            ✕ clear
+          </button>
+        )}
         <div className="flex gap-1 ml-auto">
           {(['score', 'date'] as const).map(s => (
             <button
