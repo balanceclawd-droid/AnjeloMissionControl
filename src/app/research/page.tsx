@@ -639,12 +639,19 @@ function RedditTrendingSubTab() {
   )
 }
 
+const signalColors: Record<string, string> = {
+  high: 'bg-green-500/20 text-green-400',
+  medium: 'bg-yellow-500/20 text-yellow-400',
+  low: 'bg-neutral-700 text-neutral-400',
+}
+
 function RedditPostsSubTab({ initialTopic = '' }: { initialTopic?: string }) {
   const [posts, setPosts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [niche, setNiche] = useState('')
   const [subredditFilter, setSubredditFilter] = useState('')
   const [topicFilter, setTopicFilter] = useState(initialTopic)
+  const [signalFilter, setSignalFilter] = useState('')
   const [sort, setSort] = useState<'score' | 'date'>('score')
   const [niches, setNiches] = useState<string[]>([])
 
@@ -664,11 +671,12 @@ function RedditPostsSubTab({ initialTopic = '' }: { initialTopic?: string }) {
     if (niche) params.set('niche', niche)
     if (subredditFilter.trim()) params.set('subreddit', subredditFilter.trim())
     if (topicFilter.trim()) params.set('topic', topicFilter.trim())
+    if (signalFilter) params.set('signal', signalFilter)
     fetch(`/api/reddit/posts?${params}`)
       .then(r => r.json())
       .then(d => { setPosts(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [niche, subredditFilter, topicFilter, sort])
+  }, [niche, subredditFilter, topicFilter, signalFilter, sort])
 
   return (
     <div className="space-y-4">
@@ -700,6 +708,16 @@ function RedditPostsSubTab({ initialTopic = '' }: { initialTopic?: string }) {
             ✕ clear
           </button>
         )}
+        <select
+          value={signalFilter}
+          onChange={e => setSignalFilter(e.target.value)}
+          className="bg-bg-hover border border-border rounded-lg px-3 py-1.5 text-xs text-white"
+        >
+          <option value="">All signals</option>
+          <option value="high">🟢 High signal</option>
+          <option value="medium">🟡 Medium</option>
+          <option value="low">⚪ Low (headlines)</option>
+        </select>
         <div className="flex gap-1 ml-auto">
           {(['score', 'date'] as const).map(s => (
             <button
@@ -726,6 +744,7 @@ function RedditPostsSubTab({ initialTopic = '' }: { initialTopic?: string }) {
               <tr className="border-b border-border">
                 <th className="text-right px-3 py-3 text-xs text-neutral-500 font-medium w-16">Score</th>
                 <th className="text-left px-3 py-3 text-xs text-neutral-500 font-medium">Title</th>
+                <th className="text-left px-3 py-3 text-xs text-neutral-500 font-medium w-20">Signal</th>
                 <th className="text-left px-3 py-3 text-xs text-neutral-500 font-medium w-28">Subreddit</th>
                 <th className="text-right px-3 py-3 text-xs text-neutral-500 font-medium w-20">Comments</th>
                 <th className="text-right px-3 py-3 text-xs text-neutral-500 font-medium w-24">Date</th>
@@ -746,6 +765,13 @@ function RedditPostsSubTab({ initialTopic = '' }: { initialTopic?: string }) {
                     </a>
                     {p.flair && (
                       <span className="text-xs text-neutral-600 ml-1">[{p.flair}]</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {p.signal_strength && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${signalColors[p.signal_strength] || signalColors.low}`}>
+                        {p.signal_strength}
+                      </span>
                     )}
                   </td>
                   <td className="px-3 py-2.5">

@@ -6,6 +6,7 @@ export async function GET(req: NextRequest) {
   const niche = searchParams.get('niche')
   const subredditFilter = searchParams.get('subreddit')
   const topicFilter = searchParams.get('topic')
+  const signalFilter = searchParams.get('signal') // high | medium | low
   const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100)
   const sort = searchParams.get('sort') === 'date' ? 'created_utc' : 'score'
 
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from('reddit_posts')
     .select(`
-      id, reddit_post_id, title, score, num_comments, created_utc, permalink, flair, topics,
+      id, reddit_post_id, title, score, num_comments, created_utc, permalink, flair, topics, signal_strength,
       reddit_subreddits!inner(subreddit, niche)
     `)
     .order(sort, { ascending: false })
@@ -36,6 +37,10 @@ export async function GET(req: NextRequest) {
 
   if (topicFilter) {
     query = query.contains('topics', [topicFilter.toLowerCase()])
+  }
+
+  if (signalFilter && ['high', 'medium', 'low'].includes(signalFilter)) {
+    query = query.eq('signal_strength', signalFilter)
   }
 
   const { data, error } = await query

@@ -11,6 +11,7 @@ export interface RedditPost {
   created_utc: string // ISO string
   flair: string | null
   topics: string[]
+  signal_strength: 'high' | 'medium' | 'low'
 }
 
 const STOPWORDS = new Set([
@@ -65,31 +66,56 @@ export async function scrapeSubreddit(
     .filter((p: any) => {
       const d = p.data || p
       const createdMs = (d.created_utc || 0) * 1000
-      return createdMs >= cutoff // only last 48h
+      if (createdMs < cutoff) return false // too old
+
+      const isSelf = Boolean(d.is_self)
+      const comments = d.num_comments || 0
+      const isStickied = Boolean(d.stickied)
+      const author = d.author || ''
+      const body = d.selftext || ''
+
+      if (isStickied || author === 'AutoModerator') return false
+      if (!isSelf && comments < 3) return false // link post nobody discussed
+      if (isSelf && body.length < 30 && comments < 3) return false // title-only self post with no engagement
+
+      return true
     })
     .map((p: any) => {
-    const d = p.data || p // flat or wrapped
-    const title = d.title || ''
-    const words = title
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter((w: string) => w.length > 3 && !STOPWORDS.has(w))
-    return {
-      reddit_post_id: d.id,
-      title,
-      body: d.selftext || '',
-      author: d.author || '',
-      url: d.url || '',
-      permalink: `https://reddit.com${d.permalink || ''}`,
-      score: d.score || 0,
-      upvote_ratio: d.upvote_ratio || 0,
-      num_comments: d.num_comments || 0,
-      created_utc: new Date((d.created_utc || 0) * 1000).toISOString(),
-      flair: d.link_flair_text || null,
-      topics: [...new Set(words)].slice(0, 10) as string[],
-    }
-  })
+      const d = p.data || p
+      const title = d.title || ''
+      const isSelf = Boolean(d.is_self)
+      const comments = d.num_comments || 0
+      const body = d.selftext || ''
+
+      // Signal strength scoring
+      let signal_strength: 'high' | 'medium' | 'low'
+      if (isSelf && comments >= 10) signal_strength = 'high'
+      else if (isSelf && comments >= 5) signal_strength = 'medium'
+      else if (!isSelf && comments >= 15) signal_strength = 'medium'
+      else signal_strength = 'low'
+
+      const words = title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter((w: string) => w.length > 3 && !STOPWORDS.has(w))
+
+      return {
+        reddit_post_id: d.id,
+        title,
+        body,
+        author: d.author || '',
+        url: d.url || '',
+        permalink: `https://reddit.com${d.permalink || ''}`,
+        score: d.score || 0,
+        upvote_ratio: d.upvote_ratio || 0,
+        num_comments: comments,
+        created_utc: new Date((d.created_utc || 0) * 1000).toISOString(),
+        flair: d.link_flair_text || null,
+        topics: [...new Set(words)].slice(0, 10) as string[],
+        signal_strength,
+      }
+    })
 }
 
 export function detectTrends(posts: RedditPost[], niche: string) {

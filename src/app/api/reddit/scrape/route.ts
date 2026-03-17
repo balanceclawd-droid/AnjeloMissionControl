@@ -71,6 +71,7 @@ export async function POST(req: Request) {
           created_utc: p.created_utc,
           flair: p.flair,
           topics: p.topics,
+          signal_strength: p.signal_strength,
         }))
 
         const { error: insertErr } = await supabase

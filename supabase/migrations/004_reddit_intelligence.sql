@@ -25,8 +25,11 @@ CREATE TABLE IF NOT EXISTS reddit_posts (
   scraped_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   flair TEXT,
   sentiment TEXT CHECK (sentiment IN ('positive','negative','neutral')),
-  topics TEXT[]
+  topics TEXT[],
+  signal_strength TEXT NOT NULL DEFAULT 'low' CHECK (signal_strength IN ('high','medium','low'))
 );
+-- Add signal_strength to existing table if already exists
+ALTER TABLE reddit_posts ADD COLUMN IF NOT EXISTS signal_strength TEXT NOT NULL DEFAULT 'low' CHECK (signal_strength IN ('high','medium','low'));
 
 CREATE INDEX IF NOT EXISTS reddit_posts_subreddit_created_idx ON reddit_posts (subreddit_id, created_utc DESC);
 CREATE INDEX IF NOT EXISTS reddit_posts_score_idx ON reddit_posts (score DESC);
