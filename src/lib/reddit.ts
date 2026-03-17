@@ -34,7 +34,8 @@ export async function scrapeSubreddit(
   limit = 25
 ): Promise<RedditPost[]> {
   const subredditUrl = encodeURIComponent(`https://www.reddit.com/r/${subreddit}`)
-  const url = `https://${RAPIDAPI_HOST}/v1/reddit/posts?url=${subredditUrl}&filter=${sort}`
+  // Always fetch top posts from last 24h — keeps data fresh and relevant
+  const url = `https://${RAPIDAPI_HOST}/v1/reddit/posts?url=${subredditUrl}&filter=top&t=day`
 
   const res = await fetch(url, {
     headers: {
@@ -58,7 +59,15 @@ export async function scrapeSubreddit(
     posts = raw
   }
 
-  return posts.map((p: any) => {
+  const cutoff = Date.now() - 48 * 60 * 60 * 1000 // 48 hours ago
+
+  return posts
+    .filter((p: any) => {
+      const d = p.data || p
+      const createdMs = (d.created_utc || 0) * 1000
+      return createdMs >= cutoff // only last 48h
+    })
+    .map((p: any) => {
     const d = p.data || p // flat or wrapped
     const title = d.title || ''
     const words = title
