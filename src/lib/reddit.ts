@@ -47,12 +47,19 @@ export async function scrapeSubreddit(
   if (!res.ok) throw new Error(`Reddit API error ${res.status} for r/${subreddit}`)
   const raw = await res.json()
 
-  // Handle both native Reddit shape (data.children) and wrapped API shapes
-  const children = raw?.data?.children || raw?.posts || raw?.children || raw || []
-  const posts = Array.isArray(children) ? children : []
+  // reddit3 RapidAPI returns { meta: {...}, body: [...posts] }
+  // Native Reddit returns { data: { children: [{data: post}] } }
+  let posts: any[] = []
+  if (Array.isArray(raw?.body)) {
+    posts = raw.body // flat post objects
+  } else if (Array.isArray(raw?.data?.children)) {
+    posts = raw.data.children.map((c: any) => c.data || c)
+  } else if (Array.isArray(raw)) {
+    posts = raw
+  }
+
   return posts.map((p: any) => {
-    // Support both wrapped (p.data) and flat (p directly) shapes
-    const d = p.data || p
+    const d = p.data || p // flat or wrapped
     const title = d.title || ''
     const words = title
       .toLowerCase()

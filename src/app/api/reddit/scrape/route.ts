@@ -6,12 +6,19 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-export async function POST() {
-  // Get all active subreddits
+export const maxDuration = 60 // Vercel max for hobby plan
+
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({}))
+  const batchSize = body.batch_size || 10
+  const offset = body.offset || 0
+
+  // Get active subreddits — support batching via offset
   const { data: subreddits, error: subErr } = await supabase
     .from('reddit_subreddits')
     .select('*')
     .eq('active', true)
+    .range(offset, offset + batchSize - 1)
 
   if (subErr) return NextResponse.json({ error: subErr.message }, { status: 500 })
   if (!subreddits || subreddits.length === 0) {
@@ -27,7 +34,7 @@ export async function POST() {
 
   for (let i = 0; i < subreddits.length; i++) {
     const sub = subreddits[i]
-    if (i > 0) await sleep(1000)
+    if (i > 0) await sleep(500) // 500ms delay between requests
 
     try {
       const posts = await scrapeSubreddit(sub.subreddit, 'hot', 25)
