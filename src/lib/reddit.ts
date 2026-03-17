@@ -25,49 +25,34 @@ const STOPWORDS = new Set([
   'very','much','many'
 ])
 
-// Get OAuth token using client credentials (app-only auth)
-async function getRedditToken(): Promise<string | null> {
-  const clientId = process.env.REDDIT_CLIENT_ID?.trim()
-  const clientSecret = process.env.REDDIT_CLIENT_SECRET?.trim()
-  if (!clientId || !clientSecret) return null
-
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
-  const res = await fetch('https://www.reddit.com/api/v1/access_token', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'MissionControl/1.0 (contact: admin@balance.com)',
-    },
-    body: 'grant_type=client_credentials',
-  })
-  if (!res.ok) return null
-  const data = await res.json()
-  return data.access_token || null
-}
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || '9d78581915msh37c618ff0b5cf2fp1b7969jsn06c2d4f7fb04'
+const RAPIDAPI_HOST = 'reddit3.p.rapidapi.com'
 
 export async function scrapeSubreddit(
   subreddit: string,
   sort: 'hot' | 'new' | 'top' = 'hot',
   limit = 25
 ): Promise<RedditPost[]> {
-  const token = await getRedditToken()
+  const subredditUrl = encodeURIComponent(`https://www.reddit.com/r/${subreddit}`)
+  const url = `https://${RAPIDAPI_HOST}/v1/reddit/posts?url=${subredditUrl}&filter=${sort}`
 
-  // Use OAuth API if token available, else fall back to public API
-  const baseUrl = token ? 'https://oauth.reddit.com' : 'https://www.reddit.com'
-  const url = `${baseUrl}/r/${subreddit}/${sort}.json?limit=${limit}&t=day`
-
-  const headers: Record<string, string> = {
-    'User-Agent': 'MissionControl/1.0 (contact: admin@balance.com)',
-  }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-
-  const res = await fetch(url, { headers, next: { revalidate: 0 } })
+  const res = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      'x-rapidapi-host': RAPIDAPI_HOST,
+      'x-rapidapi-key': RAPIDAPI_KEY,
+    },
+    next: { revalidate: 0 },
+  })
   if (!res.ok) throw new Error(`Reddit API error ${res.status} for r/${subreddit}`)
-  const data = await res.json()
-  const posts = data?.data?.children || []
+  const raw = await res.json()
+
+  // Handle both native Reddit shape (data.children) and wrapped API shapes
+  const children = raw?.data?.children || raw?.posts || raw?.children || raw || []
+  const posts = Array.isArray(children) ? children : []
   return posts.map((p: any) => {
-    const d = p.data
+    // Support both wrapped (p.data) and flat (p directly) shapes
+    const d = p.data || p
     const title = d.title || ''
     const words = title
       .toLowerCase()
