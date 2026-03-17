@@ -47,6 +47,9 @@ export default function Dashboard() {
         <ResearchAlertsSection researchAlerts={data.researchAlerts} />
       )}
 
+      {/* Reddit Trending */}
+      <RedditTrendingCard />
+
       {/* Stats Grid */}
       <div className="grid grid-cols-5 gap-4">
         <MetricCard label="Active Clients" value={data.stats.total_clients} />
@@ -118,6 +121,46 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+function RedditTrendingCard() {
+  const [topics, setTopics] = useState<any[]>([])
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/reddit/trending?days=1&limit=3')
+      .then(r => r.json())
+      .then(d => { setTopics(Array.isArray(d) ? d : []); setLoaded(true) })
+      .catch(() => setLoaded(true))
+  }, [])
+
+  if (!loaded) return null
+
+  return (
+    <div className="bg-bg-card border border-border rounded-lg p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm">🔴</span>
+          <h2 className="text-sm font-semibold text-white">Reddit Trending</h2>
+          <span className="text-xs text-neutral-600">Today</span>
+        </div>
+        <Link href="/research?tab=reddit" className="text-xs text-accent-red hover:underline">View all →</Link>
+      </div>
+      {topics.length === 0 ? (
+        <p className="text-xs text-neutral-500">No Reddit data yet — run a scrape from <Link href="/research?tab=reddit" className="text-accent-red hover:underline">Research</Link></p>
+      ) : (
+        <div className="flex flex-wrap gap-3">
+          {topics.map((t: any) => (
+            <div key={t.id} className="flex items-center gap-2 bg-neutral-900 rounded-lg px-3 py-2">
+              <span className="text-sm font-medium text-white">{t.topic}</span>
+              <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">{t.niche}</span>
+              <span className="text-xs text-neutral-500">{t.mention_count}×</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

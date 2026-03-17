@@ -1,7 +1,9 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 
-const NICHES = ['CEX', 'DEX', 'DeFi', 'Gaming', 'Memecoin', 'Other']
+const NICHES = ['CEX', 'DEX', 'DeFi', 'Gaming', 'Memecoin', 'General', 'Other']
 
 type Keyword = { id: number; niche: string; keyword: string; active: boolean; created_at: string }
 type Suggestion = {
@@ -13,8 +15,12 @@ type Report = {
   top_posts: any[]; new_accounts: any[]; created_at: string
 }
 
-export default function ResearchPage() {
-  const [tab, setTab] = useState<'keywords' | 'daily' | 'weekly' | 'suggestions'>('keywords')
+type TabType = 'keywords' | 'daily' | 'weekly' | 'suggestions' | 'reddit'
+
+function ResearchPageInner() {
+  const searchParams = useSearchParams()
+  const initialTab = (searchParams.get('tab') as TabType) || 'keywords'
+  const [tab, setTab] = useState<TabType>(initialTab)
 
   return (
     <div className="space-y-6">
@@ -24,8 +30,8 @@ export default function ResearchPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border">
-        {(['keywords', 'daily', 'weekly', 'suggestions'] as const).map(t => (
+      <div className="flex gap-1 border-b border-border flex-wrap">
+        {(['keywords', 'daily', 'weekly', 'suggestions', 'reddit'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -35,7 +41,11 @@ export default function ResearchPage() {
                 : 'border-transparent text-neutral-400 hover:text-white'
             }`}
           >
-            {t === 'keywords' ? 'Keywords' : t === 'daily' ? 'Daily Reports' : t === 'weekly' ? 'Weekly Overview' : 'Competitor Suggestions'}
+            {t === 'keywords' ? 'Keywords'
+              : t === 'daily' ? 'Daily Reports'
+              : t === 'weekly' ? 'Weekly Overview'
+              : t === 'suggestions' ? 'Competitor Suggestions'
+              : '🔴 Reddit'}
           </button>
         ))}
       </div>
@@ -44,7 +54,16 @@ export default function ResearchPage() {
       {tab === 'daily' && <DailyReportsTab />}
       {tab === 'weekly' && <WeeklyOverviewTab />}
       {tab === 'suggestions' && <SuggestionsTab />}
+      {tab === 'reddit' && <RedditTab />}
     </div>
+  )
+}
+
+export default function ResearchPage() {
+  return (
+    <Suspense fallback={<div className="text-neutral-500 text-sm">Loading...</div>}>
+      <ResearchPageInner />
+    </Suspense>
   )
 }
 
@@ -443,6 +462,405 @@ function SuggestionsTab() {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Reddit Tab ───────────────────────────────────────────────────────────────
+
+type RedditSubTab = 'trending' | 'posts' | 'subreddits'
+
+function RedditTab() {
+  const [subTab, setSubTab] = useState<RedditSubTab>('trending')
+
+  return (
+    <div className="space-y-4">
+      {/* Sub-tabs */}
+      <div className="flex gap-1 border-b border-border/50">
+        {(['trending', 'posts', 'subreddits'] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setSubTab(t)}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
+              subTab === t
+                ? 'border-accent-red text-white'
+                : 'border-transparent text-neutral-500 hover:text-neutral-300'
+            }`}
+          >
+            {t === 'trending' ? 'Trending' : t === 'posts' ? 'Posts' : 'Subreddits'}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'trending' && <RedditTrendingSubTab />}
+      {subTab === 'posts' && <RedditPostsSubTab />}
+      {subTab === 'subreddits' && <RedditSubredditsSubTab />}
+    </div>
+  )
+}
+
+function RedditTrendingSubTab() {
+  const [timeframe, setTimeframe] = useState<'1' | '7' | '30'>('7')
+  const [niche, setNiche] = useState('')
+  const [niches, setNiches] = useState<string[]>([])
+  const [trends, setTrends] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [scraping, setScraping] = useState(false)
+  const [scrapeResult, setScrapeResult] = useState<string>('')
+
+  const fetchTrends = async () => {
+    setLoading(true)
+    const params = new URLSearchParams({ days: timeframe, limit: '50' })
+    if (niche) params.set('niche', niche)
+    const res = await fetch(`/api/reddit/trending?${params}`)
+    const data = await res.json()
+    setTrends(Array.isArray(data) ? data : [])
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    fetch('/api/reddit/subreddits')
+      .then(r => r.json())
+      .then((d: any[]) => {
+        const unique = [...new Set(d.map((s: any) => s.niche))].sort()
+        setNiches(unique)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => { fetchTrends() }, [timeframe, niche])
+
+  const handleScrape = async () => {
+    setScraping(true)
+    setScrapeResult('')
+    try {
+      const res = await fetch('/api/reddit/scrape', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) {
+        setScrapeResult(`Error: ${data.error}`)
+      } else {
+        setScrapeResult(`✓ Scraped ${data.scraped_subreddits} subreddits, ${data.posts_inserted} new posts, ${data.trends_detected} trends`)
+        fetchTrends()
+      }
+    } catch {
+      setScrapeResult('Scrape failed')
+    }
+    setScraping(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1">
+          {(['1', '7', '30'] as const).map(d => (
+            <button
+              key={d}
+              onClick={() => setTimeframe(d)}
+              className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                timeframe === d
+                  ? 'bg-accent-red text-white'
+                  : 'bg-neutral-800 text-neutral-400 hover:text-white'
+              }`}
+            >
+              {d === '1' ? 'Today' : d === '7' ? '7 Days' : '30 Days'}
+            </button>
+          ))}
+        </div>
+
+        <select
+          value={niche}
+          onChange={e => setNiche(e.target.value)}
+          className="bg-bg-hover border border-border rounded-lg px-3 py-1.5 text-xs text-white min-w-[130px]"
+        >
+          <option value="">All niches</option>
+          {niches.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+
+        <button
+          onClick={handleScrape}
+          disabled={scraping}
+          className="ml-auto px-4 py-1.5 bg-accent-red text-white rounded-lg text-xs font-medium hover:opacity-90 disabled:opacity-50"
+        >
+          {scraping ? 'Scraping...' : 'Scrape Now'}
+        </button>
+      </div>
+
+      {scrapeResult && (
+        <p className={`text-xs px-3 py-2 rounded-lg ${scrapeResult.startsWith('Error') ? 'bg-red-950/30 text-red-400' : 'bg-green-950/30 text-green-400'}`}>
+          {scrapeResult}
+        </p>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-neutral-500">Loading...</p>
+      ) : trends.length === 0 ? (
+        <div className="bg-bg-card border border-border rounded-lg p-8 text-center">
+          <p className="text-sm text-neutral-500">No trending data yet.</p>
+          <p className="text-xs text-neutral-600 mt-1">Hit "Scrape Now" to pull Reddit posts and detect trends.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {trends.map((t: any) => (
+            <div key={t.id} className="bg-bg-card border border-border rounded-lg p-4 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-base font-semibold text-white leading-tight">{t.topic}</p>
+                <span className="text-xs px-2 py-0.5 rounded bg-neutral-800 text-neutral-300 shrink-0">{t.niche}</span>
+              </div>
+              <div className="flex gap-4 text-xs text-neutral-500">
+                <span><span className="text-white font-medium">{t.mention_count}</span> mentions</span>
+                <span>avg score <span className="text-white font-medium">{Math.round(t.avg_score)}</span></span>
+              </div>
+              {t.sample_titles?.length > 0 && (
+                <ul className="space-y-1">
+                  {(t.sample_titles as string[]).slice(0, 3).map((title, i) => (
+                    <li key={i} className="text-xs text-neutral-500 line-clamp-1 border-l border-border/60 pl-2">{title}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RedditPostsSubTab() {
+  const [posts, setPosts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [niche, setNiche] = useState('')
+  const [subredditFilter, setSubredditFilter] = useState('')
+  const [sort, setSort] = useState<'score' | 'date'>('score')
+  const [niches, setNiches] = useState<string[]>([])
+
+  useEffect(() => {
+    fetch('/api/reddit/subreddits')
+      .then(r => r.json())
+      .then((d: any[]) => {
+        const unique = [...new Set(d.map((s: any) => s.niche))].sort()
+        setNiches(unique)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    const params = new URLSearchParams({ limit: '50', sort })
+    if (niche) params.set('niche', niche)
+    if (subredditFilter.trim()) params.set('subreddit', subredditFilter.trim())
+    fetch(`/api/reddit/posts?${params}`)
+      .then(r => r.json())
+      .then(d => { setPosts(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [niche, subredditFilter, sort])
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3 items-center">
+        <select
+          value={niche}
+          onChange={e => setNiche(e.target.value)}
+          className="bg-bg-hover border border-border rounded-lg px-3 py-1.5 text-xs text-white min-w-[130px]"
+        >
+          <option value="">All niches</option>
+          {niches.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <input
+          type="text"
+          value={subredditFilter}
+          onChange={e => setSubredditFilter(e.target.value)}
+          placeholder="Filter subreddit..."
+          className="bg-bg-hover border border-border rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-neutral-600 w-40"
+        />
+        <div className="flex gap-1 ml-auto">
+          {(['score', 'date'] as const).map(s => (
+            <button
+              key={s}
+              onClick={() => setSort(s)}
+              className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                sort === s ? 'bg-accent-red text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'
+              }`}
+            >
+              {s === 'score' ? 'Top Score' : 'Latest'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-bg-card border border-border rounded-lg overflow-hidden">
+        {loading ? (
+          <p className="p-4 text-sm text-neutral-500">Loading...</p>
+        ) : posts.length === 0 ? (
+          <p className="p-4 text-sm text-neutral-500">No posts found. Run a scrape first.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-right px-3 py-3 text-xs text-neutral-500 font-medium w-16">Score</th>
+                <th className="text-left px-3 py-3 text-xs text-neutral-500 font-medium">Title</th>
+                <th className="text-left px-3 py-3 text-xs text-neutral-500 font-medium w-28">Subreddit</th>
+                <th className="text-right px-3 py-3 text-xs text-neutral-500 font-medium w-20">Comments</th>
+                <th className="text-right px-3 py-3 text-xs text-neutral-500 font-medium w-24">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {posts.map((p: any) => (
+                <tr key={p.id} className="border-b border-border/50 hover:bg-bg-hover/30">
+                  <td className="px-3 py-2.5 text-right text-xs font-medium text-white">{p.score?.toLocaleString()}</td>
+                  <td className="px-3 py-2.5">
+                    <a
+                      href={p.permalink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-neutral-300 hover:text-white hover:underline line-clamp-2"
+                    >
+                      {p.title}
+                    </a>
+                    {p.flair && (
+                      <span className="text-xs text-neutral-600 ml-1">[{p.flair}]</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="text-xs text-neutral-400">r/{p.reddit_subreddits?.subreddit}</span>
+                    <span className="text-xs text-neutral-600 ml-1 block">{p.reddit_subreddits?.niche}</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-xs text-neutral-500">{p.num_comments?.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 text-right text-xs text-neutral-500">
+                    {new Date(p.created_utc).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function RedditSubredditsSubTab() {
+  const [subreddits, setSubreddits] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newSub, setNewSub] = useState('')
+  const [newNiche, setNewNiche] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState('')
+
+  const fetchSubs = () => {
+    fetch('/api/reddit/subreddits')
+      .then(r => r.json())
+      .then(d => { setSubreddits(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }
+
+  useEffect(() => { fetchSubs() }, [])
+
+  const addSubreddit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newSub.trim() || !newNiche) return
+    setAdding(true)
+    setError('')
+    const res = await fetch('/api/reddit/subreddits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subreddit: newSub.trim(), niche: newNiche }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      setError(data.error || 'Failed to add')
+    } else {
+      setSubreddits(prev => [...prev, data].sort((a, b) => a.niche.localeCompare(b.niche) || a.subreddit.localeCompare(b.subreddit)))
+      setNewSub('')
+    }
+    setAdding(false)
+  }
+
+  const deleteSub = async (id: number) => {
+    const res = await fetch(`/api/reddit/subreddits/${id}`, { method: 'DELETE' })
+    if (res.ok) setSubreddits(prev => prev.filter(s => s.id !== id))
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Add form */}
+      <div className="bg-bg-card border border-border rounded-lg p-4">
+        <h3 className="text-sm font-semibold text-white mb-3">Add Subreddit</h3>
+        <form onSubmit={addSubreddit} className="flex gap-3 flex-wrap items-end">
+          <div className="space-y-1 flex-1 min-w-[150px]">
+            <label className="text-xs text-neutral-500">Subreddit name</label>
+            <input
+              type="text"
+              value={newSub}
+              onChange={e => setNewSub(e.target.value)}
+              placeholder="e.g. bitcoin"
+              className="w-full bg-bg-hover border border-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-neutral-600"
+              required
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-neutral-500">Niche</label>
+            <select
+              value={newNiche}
+              onChange={e => setNewNiche(e.target.value)}
+              className="bg-bg-hover border border-border rounded-lg px-3 py-2 text-sm text-white min-w-[130px]"
+              required
+            >
+              <option value="">Select niche...</option>
+              {NICHES.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <button
+            type="submit"
+            disabled={adding}
+            className="px-4 py-2 bg-accent-red text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {adding ? 'Adding...' : 'Add'}
+          </button>
+        </form>
+        {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+      </div>
+
+      {/* Table */}
+      <div className="bg-bg-card border border-border rounded-lg overflow-hidden">
+        {loading ? (
+          <p className="p-4 text-sm text-neutral-500">Loading...</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">Subreddit</th>
+                <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">Niche</th>
+                <th className="text-left px-4 py-3 text-xs text-neutral-500 font-medium">Status</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {subreddits.map(s => (
+                <tr key={s.id} className="border-b border-border/50 hover:bg-bg-hover/30">
+                  <td className="px-4 py-3 text-white font-medium">r/{s.subreddit}</td>
+                  <td className="px-4 py-3">
+                    <span className="text-xs px-2 py-0.5 rounded bg-neutral-800 text-neutral-300">{s.niche}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-medium ${s.active ? 'text-green-500' : 'text-neutral-500'}`}>
+                      {s.active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => deleteSub(s.id)}
+                      className="text-xs text-neutral-500 hover:text-red-400 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   )
