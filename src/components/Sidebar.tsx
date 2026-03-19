@@ -8,6 +8,7 @@ const navItems = [
   { href: '/competitors', label: 'Competitors', icon: '▲' },
   { href: '/posts', label: 'Posts', icon: '■' },
   { href: '/patterns', label: 'Patterns', icon: '◎' },
+  { href: '/strategy', label: 'Strategy', icon: '⚔' },
   { href: '/alerts', label: 'Alerts', icon: '⚡' },
   { href: '/research', label: 'Research', icon: '🔭' },
 ]
