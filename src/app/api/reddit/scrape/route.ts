@@ -26,13 +26,17 @@ export async function POST(req: Request) {
   const errors: string[] = []
   const nichePostsMap: Record<string, any[]> = {}
 
-  // Build subreddit → DB row map
+  // Build subreddit → DB row map and niche map
   const subMap: Record<string, any> = {}
-  for (const sub of subreddits) subMap[sub.subreddit.toLowerCase()] = sub
+  const nicheMap: Record<string, string> = {}
+  for (const sub of subreddits) {
+    subMap[sub.subreddit.toLowerCase()] = sub
+    nicheMap[sub.subreddit.toLowerCase()] = sub.niche
+  }
 
   try {
     const subNames = subreddits.map((s: any) => s.subreddit)
-    const results = await scrapeSubredditsViaApify(subNames, 25)
+    const results = await scrapeSubredditsViaApify(subNames, 25, nicheMap)
 
     for (const { subreddit, posts } of results) {
       const sub = subMap[subreddit.toLowerCase()]

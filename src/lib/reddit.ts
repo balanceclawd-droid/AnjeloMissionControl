@@ -14,23 +14,56 @@ export interface RedditPost {
   signal_strength: 'high' | 'medium' | 'low'
 }
 
-const STOPWORDS = new Set([
-  'the','a','an','and','or','but','in','on','at','to','for','of','with','by','from',
-  'is','are','was','were','be','been','have','has','had','do','does','did','will',
-  'would','could','should','may','might','can','it','its','this','that','these',
-  'those','i','my','we','our','you','your','they','their','he','his','she','her',
-  'what','how','why','when','where','who','which','not','no','so','if','as','up',
-  'out','about','into','than','then','there','here','also','just','get','got','like',
-  'more','some','any','all','one','two','new','best','good','great','need','want',
-  'make','made','use','used','using','day','time','way','said','going','really',
-  'very','much','many'
-])
+// Niche-specific topic keywords — what we actually care about detecting
+const NICHE_TOPICS: Record<string, string[]> = {
+  DeFi: [
+    'yield','liquidity','staking','airdrop','exploit','hack','bridge','governance',
+    'protocol','tvl','gas','fees','defi','lending','borrowing','vault','farming',
+    'swap','pool','token','dao','audit','rug','rugpull','flashloan','arbitrage',
+  ],
+  DEX: [
+    'liquidity','pool','swap','fees','slippage','impermanent','volume','pair',
+    'routing','aggregator','amm','orderbook','limit','concentrated',
+  ],
+  Gaming: [
+    'tournament','season','rank','meta','patch','nft','reward','guild','marketplace',
+    'p2e','play-to-earn','scholarship','clan','leaderboard','prize','drop','mint',
+    'floor','opensea','steam','launch','beta','update','nerf','buff','grind',
+  ],
+  CEX: [
+    'withdrawal','deposit','listing','delisting','trading','volume','fees','kyc',
+    'regulation','sec','hack','breach','leverage','futures','margin','liquidation',
+    'binance','coinbase','kraken','bybit','okx','custody','insurance',
+  ],
+  Memecoin: [
+    'pump','dump','launch','presale','rug','community','holder','wallet','airdrop',
+    'bonk','pepe','doge','shib','solana','trending','viral','meme','snipe','bundle',
+    'migration','raydium','pumpfun','moonshot',
+  ],
+  General: [
+    'bitcoin','btc','ethereum','eth','crypto','blockchain','web3','nft','defi',
+    'regulation','sec','etf','bull','bear','market','price','adoption','wallet',
+    'layer2','l2','zk','scaling','institutional',
+  ],
+}
+
+// Fallback for unrecognised niches
+const FALLBACK_TOPICS = [
+  'bitcoin','ethereum','crypto','nft','defi','web3','token','wallet','blockchain',
+  'trading','market','launch','hack','regulation','airdrop','staking',
+]
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN || ''
 const APIFY_ACTOR_ID = 'FgJtjDwJCLhRH9saM'
 
+function extractTopics(title: string, body: string, niche: string): string[] {
+  const text = `${title} ${body}`.toLowerCase()
+  const keywords = NICHE_TOPICS[niche] || FALLBACK_TOPICS
+  return keywords.filter(kw => text.includes(kw))
+}
+
 // Trigger an Apify actor run for a batch of subreddits and return the dataset items
-export async function scrapeSubredditsViaApify(subreddits: string[], maxPostsPerSub = 25): Promise<{ subreddit: string; posts: RedditPost[] }[]> {
+export async function scrapeSubredditsViaApify(subreddits: string[], maxPostsPerSub = 25, nicheMap: Record<string, string> = {}): Promise<{ subreddit: string; posts: RedditPost[] }[]> {
   const startUrls = subreddits.map(s => ({
     url: `https://www.reddit.com/r/${s}/top/?t=day`,
   }))
@@ -115,11 +148,7 @@ export async function scrapeSubredditsViaApify(subreddits: string[], maxPostsPer
     else signal_strength = 'low'
 
     const title = item.title || ''
-    const words = title
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter((w: string) => w.length > 3 && !STOPWORDS.has(w))
+    const niche = nicheMap[subreddit.toLowerCase()] || 'General'
 
     const post: RedditPost = {
       reddit_post_id: item.parsedId || item.id || '',
@@ -133,7 +162,7 @@ export async function scrapeSubredditsViaApify(subreddits: string[], maxPostsPer
       num_comments: comments,
       created_utc: item.createdAt || new Date().toISOString(),
       flair: item.flair || null,
-      topics: [...new Set(words)].slice(0, 10) as string[],
+      topics: extractTopics(title, body, niche),
       signal_strength,
     }
 
