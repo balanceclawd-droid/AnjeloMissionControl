@@ -1,10 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { scrapeSubreddit, detectTrends } from '@/lib/reddit'
-
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
+import { scrapeSubredditsViaApify, detectTrends } from '@/lib/reddit'
 
 export const maxDuration = 60 // Vercel max for hobby plan
 
@@ -28,16 +24,19 @@ export async function POST(req: Request) {
   let posts_inserted = 0
   let scraped_subreddits = 0
   const errors: string[] = []
-
-  // Group posts by niche for trend detection
   const nichePostsMap: Record<string, any[]> = {}
 
-  for (let i = 0; i < subreddits.length; i++) {
-    const sub = subreddits[i]
-    if (i > 0) await sleep(500) // 500ms delay between requests
+  // Build subreddit → DB row map
+  const subMap: Record<string, any> = {}
+  for (const sub of subreddits) subMap[sub.subreddit.toLowerCase()] = sub
 
-    try {
-      const posts = await scrapeSubreddit(sub.subreddit, 'hot', 25)
+  try {
+    const subNames = subreddits.map((s: any) => s.subreddit)
+    const results = await scrapeSubredditsViaApify(subNames, 25)
+
+    for (const { subreddit, posts } of results) {
+      const sub = subMap[subreddit.toLowerCase()]
+      if (!sub) continue
       scraped_subreddits++
 
       // Collect for trend detection
@@ -46,15 +45,15 @@ export async function POST(req: Request) {
 
       if (posts.length === 0) continue
 
-      // Get existing reddit_post_ids to avoid duplicates
-      const postIds = posts.map(p => p.reddit_post_id)
+      // Deduplicate against existing
+      const postIds = posts.map(p => p.reddit_post_id).filter(Boolean)
       const { data: existing } = await supabase
         .from('reddit_posts')
         .select('reddit_post_id')
         .in('reddit_post_id', postIds)
 
       const existingIds = new Set((existing || []).map((e: any) => e.reddit_post_id))
-      const newPosts = posts.filter(p => !existingIds.has(p.reddit_post_id))
+      const newPosts = posts.filter(p => p.reddit_post_id && !existingIds.has(p.reddit_post_id))
 
       if (newPosts.length > 0) {
         const rows = newPosts.map(p => ({
@@ -74,19 +73,16 @@ export async function POST(req: Request) {
           signal_strength: p.signal_strength,
         }))
 
-        const { error: insertErr } = await supabase
-          .from('reddit_posts')
-          .insert(rows)
-
+        const { error: insertErr } = await supabase.from('reddit_posts').insert(rows)
         if (insertErr) {
-          errors.push(`Insert error for r/${sub.subreddit}: ${insertErr.message}`)
+          errors.push(`Insert error for r/${subreddit}: ${insertErr.message}`)
         } else {
           posts_inserted += newPosts.length
         }
       }
-    } catch (err: any) {
-      errors.push(`Scrape error for r/${sub.subreddit}: ${err.message}`)
     }
+  } catch (err: any) {
+    errors.push(`Apify scrape error: ${err.message}`)
   }
 
   // Detect trends per niche and upsert
@@ -119,6 +115,6 @@ export async function POST(req: Request) {
     scraped_subreddits,
     posts_inserted,
     trends_detected,
-    errors: errors.length > 0 ? errors : undefined,
+    ...(errors.length > 0 ? { errors } : {}),
   })
 }

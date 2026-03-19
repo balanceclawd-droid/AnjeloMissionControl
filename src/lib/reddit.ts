@@ -26,96 +26,132 @@ const STOPWORDS = new Set([
   'very','much','many'
 ])
 
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || '9d78581915msh37c618ff0b5cf2fp1b7969jsn06c2d4f7fb04'
-const RAPIDAPI_HOST = 'reddit3.p.rapidapi.com'
+const APIFY_TOKEN = process.env.APIFY_TOKEN || ''
+const APIFY_ACTOR_ID = 'FgJtjDwJCLhRH9saM'
 
-export async function scrapeSubreddit(
-  subreddit: string,
-  sort: 'hot' | 'new' | 'top' = 'hot',
-  limit = 25
-): Promise<RedditPost[]> {
-  const subredditUrl = encodeURIComponent(`https://www.reddit.com/r/${subreddit}`)
-  // Always fetch top posts from last 24h — keeps data fresh and relevant
-  const url = `https://${RAPIDAPI_HOST}/v1/reddit/posts?url=${subredditUrl}&filter=top&t=day`
+// Trigger an Apify actor run for a batch of subreddits and return the dataset items
+export async function scrapeSubredditsViaApify(subreddits: string[], maxPostsPerSub = 25): Promise<{ subreddit: string; posts: RedditPost[] }[]> {
+  const startUrls = subreddits.map(s => ({
+    url: `https://www.reddit.com/r/${s}/top/?t=day`,
+  }))
 
-  const res = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      'x-rapidapi-host': RAPIDAPI_HOST,
-      'x-rapidapi-key': RAPIDAPI_KEY,
-    },
-    next: { revalidate: 0 },
+  // Start the run
+  const runRes = await fetch(`https://api.apify.com/v2/acts/${APIFY_ACTOR_ID}/runs?token=${APIFY_TOKEN}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      startUrls,
+      maxPostCount: maxPostsPerSub,
+      maxComments: 0,
+      sort: 'top',
+      searchPosts: true,
+      searchComments: false,
+      searchCommunities: false,
+      searchUsers: false,
+      skipComments: true,
+      skipCommunity: true,
+      skipUserPosts: true,
+      includeNSFW: false,
+      debugMode: false,
+      proxy: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] },
+    }),
   })
-  if (!res.ok) throw new Error(`Reddit API error ${res.status} for r/${subreddit}`)
-  const raw = await res.json()
 
-  // reddit3 RapidAPI returns { meta: {...}, body: [...posts] }
-  // Native Reddit returns { data: { children: [{data: post}] } }
-  let posts: any[] = []
-  if (Array.isArray(raw?.body)) {
-    posts = raw.body // flat post objects
-  } else if (Array.isArray(raw?.data?.children)) {
-    posts = raw.data.children.map((c: any) => c.data || c)
-  } else if (Array.isArray(raw)) {
-    posts = raw
+  if (!runRes.ok) {
+    const text = await runRes.text()
+    throw new Error(`Apify run failed: ${runRes.status} — ${text}`)
   }
 
-  const cutoff = Date.now() - 48 * 60 * 60 * 1000 // 48 hours ago
+  const runData = await runRes.json()
+  const runId = runData?.data?.id
+  const datasetId = runData?.data?.defaultDatasetId
+  if (!runId || !datasetId) throw new Error('Apify run did not return runId/datasetId')
 
-  return posts
-    .filter((p: any) => {
-      const d = p.data || p
-      const createdMs = (d.created_utc || 0) * 1000
-      if (createdMs < cutoff) return false // too old
+  // Poll until finished (max 90s)
+  const deadline = Date.now() + 90_000
+  while (Date.now() < deadline) {
+    await sleep(5000)
+    const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`)
+    const statusData = await statusRes.json()
+    const status = statusData?.data?.status
+    if (status === 'SUCCEEDED') break
+    if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED-OUT') {
+      throw new Error(`Apify run ${status}`)
+    }
+  }
 
-      const isSelf = Boolean(d.is_self)
-      const comments = d.num_comments || 0
-      const isStickied = Boolean(d.stickied)
-      const author = d.author || ''
-      const body = d.selftext || ''
+  // Fetch dataset items
+  const itemsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=1000`)
+  if (!itemsRes.ok) throw new Error(`Failed to fetch Apify dataset: ${itemsRes.status}`)
+  const items: any[] = await itemsRes.json()
 
-      if (isStickied || author === 'AutoModerator') return false
-      if (!isSelf && comments < 3) return false // link post nobody discussed
-      if (isSelf && body.length < 30 && comments < 3) return false // title-only self post with no engagement
+  // Group by subreddit and map to RedditPost shape
+  const grouped: Record<string, RedditPost[]> = {}
+  const cutoff = Date.now() - 48 * 60 * 60 * 1000
 
-      return true
-    })
-    .map((p: any) => {
-      const d = p.data || p
-      const title = d.title || ''
-      const isSelf = Boolean(d.is_self)
-      const comments = d.num_comments || 0
-      const body = d.selftext || ''
+  for (const item of items) {
+    if (item.dataType !== 'post') continue
 
-      // Signal strength scoring
-      let signal_strength: 'high' | 'medium' | 'low'
-      if (isSelf && comments >= 10) signal_strength = 'high'
-      else if (isSelf && comments >= 5) signal_strength = 'medium'
-      else if (!isSelf && comments >= 15) signal_strength = 'medium'
-      else signal_strength = 'low'
+    const subreddit = item.parsedCommunityName || item.communityName?.replace('r/', '') || ''
+    if (!subreddit) continue
 
-      const words = title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .split(/\s+/)
-        .filter((w: string) => w.length > 3 && !STOPWORDS.has(w))
+    const createdAt = item.createdAt ? new Date(item.createdAt).getTime() : 0
+    if (createdAt < cutoff) continue // too old
 
-      return {
-        reddit_post_id: d.id,
-        title,
-        body,
-        author: d.author || '',
-        url: d.url || '',
-        permalink: `https://reddit.com${d.permalink || ''}`,
-        score: d.score || 0,
-        upvote_ratio: d.upvote_ratio || 0,
-        num_comments: comments,
-        created_utc: new Date((d.created_utc || 0) * 1000).toISOString(),
-        flair: d.link_flair_text || null,
-        topics: [...new Set(words)].slice(0, 10) as string[],
-        signal_strength,
-      }
-    })
+    const isSelf = !item.link || item.link === item.url
+    const comments = item.numberOfComments || 0
+    const body = item.body || ''
+
+    // Filter low-signal
+    if (item.isAd) continue
+    if (!isSelf && comments < 3) continue
+    if (isSelf && body.length < 30 && comments < 3) continue
+
+    // Signal strength
+    let signal_strength: 'high' | 'medium' | 'low'
+    if (isSelf && comments >= 10) signal_strength = 'high'
+    else if (isSelf && comments >= 5) signal_strength = 'medium'
+    else if (!isSelf && comments >= 15) signal_strength = 'medium'
+    else signal_strength = 'low'
+
+    const title = item.title || ''
+    const words = title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w: string) => w.length > 3 && !STOPWORDS.has(w))
+
+    const post: RedditPost = {
+      reddit_post_id: item.parsedId || item.id || '',
+      title,
+      body,
+      author: item.username || '',
+      url: item.link || item.url || '',
+      permalink: item.url || '',
+      score: item.upVotes || 0,
+      upvote_ratio: item.upVoteRatio || 0,
+      num_comments: comments,
+      created_utc: item.createdAt || new Date().toISOString(),
+      flair: item.flair || null,
+      topics: [...new Set(words)].slice(0, 10) as string[],
+      signal_strength,
+    }
+
+    if (!grouped[subreddit]) grouped[subreddit] = []
+    grouped[subreddit].push(post)
+  }
+
+  return subreddits.map(s => ({ subreddit: s, posts: grouped[s] || [] }))
+}
+
+// Legacy single-subreddit wrapper (kept for backwards compat)
+export async function scrapeSubreddit(subreddit: string): Promise<RedditPost[]> {
+  const results = await scrapeSubredditsViaApify([subreddit])
+  return results[0]?.posts || []
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 export function detectTrends(posts: RedditPost[], niche: string) {
@@ -137,7 +173,7 @@ export function detectTrends(posts: RedditPost[], niche: string) {
       topic,
       mention_count: v.count,
       avg_score: Math.round(v.scores.reduce((a, b) => a + b, 0) / v.scores.length),
-      sample_titles: v.samples, // now [{title, permalink}] objects
+      sample_titles: v.samples,
     }))
     .sort((a, b) => b.mention_count - a.mention_count)
     .slice(0, 20)
