@@ -55,8 +55,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   const subIds = subs.map((s: any) => s.id)
 
-  // Fetch recent high/medium signal posts from last 48h
-  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
+  // Fetch recent high/medium signal posts from last 7 days
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
   const { data: posts, error: postsErr } = await supabase
     .from('reddit_posts')
