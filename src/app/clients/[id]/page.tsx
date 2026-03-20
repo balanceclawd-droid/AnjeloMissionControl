@@ -16,6 +16,8 @@ const OPPORTUNITY_TYPE_LABELS: Record<string, { label: string; color: string; ti
 function RedditInceptionSection({ clientId }: { clientId: string }) {
   const [posts, setPosts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     fetch(`/api/clients/${clientId}/reddit-opportunities`)
@@ -23,6 +25,34 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
       .then(d => { setPosts(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
   }, [clientId])
+
+  const toggleSelect = (id: number) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const copyForTeam = () => {
+    const selectedPosts = posts.filter(p => selected.has(p.id))
+    const text = selectedPosts.map((post, i) => {
+      const typeInfo = OPPORTUNITY_TYPE_LABELS[post.opportunity_type] || OPPORTUNITY_TYPE_LABELS.general
+      return [
+        `${i + 1}. ${post.title}`,
+        `   Link: ${post.permalink}`,
+        `   Type: ${typeInfo.label.replace(/[^\w\s]/g, '').trim()}`,
+        `   Angle: ${typeInfo.tip}`,
+        `   Subreddit: r/${post.reddit_subreddits?.subreddit} · ${post.num_comments} comments · ${post.score} upvotes`,
+      ].join('\n')
+    }).join('\n\n')
+
+    const full = `Reddit Engagement Tasks\n${'='.repeat(30)}\n\n${text}\n\nGo in, add genuine value, and naturally weave in the product where it fits. Do NOT spam or hard sell.`
+    navigator.clipboard.writeText(full).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    })
+  }
 
   if (loading) return (
     <div className="bg-bg-card border border-border rounded-lg p-6">
@@ -35,9 +65,19 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-white">🎯 Reddit Inception Opportunities</h3>
-          <p className="text-xs text-neutral-500 mt-0.5">Active conversations where organic engagement could drive awareness</p>
+          <p className="text-xs text-neutral-500 mt-0.5">Select posts to copy as a brief for your team</p>
         </div>
-        <span className="text-xs text-neutral-600">{posts.length} opportunities</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-neutral-600">{posts.length} opportunities</span>
+          {selected.size > 0 && (
+            <button
+              onClick={copyForTeam}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-white text-black hover:bg-neutral-200 transition-colors"
+            >
+              {copied ? '✓ Copied!' : `📋 Copy ${selected.size} for team`}
+            </button>
+          )}
+        </div>
       </div>
 
       {posts.length === 0 ? (
@@ -49,23 +89,41 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
         <div className="space-y-3">
           {posts.map((post: any) => {
             const typeInfo = OPPORTUNITY_TYPE_LABELS[post.opportunity_type] || OPPORTUNITY_TYPE_LABELS.general
+            const isSelected = selected.has(post.id)
             return (
-              <div key={post.id} className="border border-border/60 rounded-lg p-4 space-y-2 hover:border-border transition-colors">
+              <div
+                key={post.id}
+                onClick={() => toggleSelect(post.id)}
+                className={`border rounded-lg p-4 space-y-2 cursor-pointer transition-colors ${
+                  isSelected
+                    ? 'border-white/40 bg-white/5'
+                    : 'border-border/60 hover:border-border'
+                }`}
+              >
                 <div className="flex items-start justify-between gap-3">
-                  <a
-                    href={post.permalink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-medium text-white hover:text-accent-red hover:underline leading-snug flex-1"
-                  >
-                    {post.title}
-                  </a>
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    {/* Checkbox */}
+                    <div className={`mt-0.5 shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                      isSelected ? 'bg-white border-white' : 'border-neutral-600'
+                    }`}>
+                      {isSelected && <span className="text-black text-xs leading-none">✓</span>}
+                    </div>
+                    <a
+                      href={post.permalink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="text-sm font-medium text-white hover:text-accent-red hover:underline leading-snug flex-1"
+                    >
+                      {post.title}
+                    </a>
+                  </div>
                   <span className={`text-xs px-2 py-0.5 rounded shrink-0 font-medium ${typeInfo.color}`}>
                     {typeInfo.label}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-3 pl-7">
                   <div className="flex items-center gap-3 text-xs text-neutral-500">
                     <span>r/{post.reddit_subreddits?.subreddit}</span>
                     <span>·</span>
@@ -81,6 +139,7 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
                     href={post.permalink}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
                     className="text-xs font-medium px-3 py-1.5 rounded-lg bg-accent-red/10 text-accent-red hover:bg-accent-red/20 transition-colors shrink-0"
                   >
                     💬 Go comment
@@ -88,12 +147,12 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
                 </div>
 
                 {post.body && post.body.length > 20 && (
-                  <p className="text-xs text-neutral-500 line-clamp-2 border-l-2 border-border pl-2">
+                  <p className="text-xs text-neutral-500 line-clamp-2 border-l-2 border-border pl-2 ml-7">
                     {post.body.substring(0, 200)}{post.body.length > 200 ? '...' : ''}
                   </p>
                 )}
 
-                <div className="bg-neutral-900 rounded px-3 py-2">
+                <div className="bg-neutral-900 rounded px-3 py-2 ml-7">
                   <p className="text-xs text-neutral-400">
                     <span className="text-accent-red font-medium">Angle: </span>
                     {typeInfo.tip}
@@ -101,7 +160,7 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
                 </div>
 
                 {post.matchedKeywords?.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-1 pl-7">
                     {post.matchedKeywords.slice(0, 4).map((kw: string) => (
                       <span key={kw} className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-500">
                         {kw}
