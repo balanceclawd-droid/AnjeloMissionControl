@@ -65,16 +65,26 @@ function RedditInceptionSection({ clientId, vertical }: { clientId: string; vert
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3 text-xs text-neutral-500">
-                  <span>r/{post.reddit_subreddits?.subreddit}</span>
-                  <span>·</span>
-                  <span>{post.num_comments} comments</span>
-                  <span>·</span>
-                  <span>{post.score} upvotes</span>
-                  <span>·</span>
-                  <span className={`font-medium ${post.signal_strength === 'high' ? 'text-green-400' : 'text-yellow-400'}`}>
-                    {post.signal_strength} signal
-                  </span>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 text-xs text-neutral-500">
+                    <span>r/{post.reddit_subreddits?.subreddit}</span>
+                    <span>·</span>
+                    <span>{post.num_comments} comments</span>
+                    <span>·</span>
+                    <span>{post.score} upvotes</span>
+                    <span>·</span>
+                    <span className={`font-medium ${post.signal_strength === 'high' ? 'text-green-400' : 'text-yellow-400'}`}>
+                      {post.signal_strength} signal
+                    </span>
+                  </div>
+                  <a
+                    href={post.permalink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg bg-accent-red/10 text-accent-red hover:bg-accent-red/20 transition-colors shrink-0"
+                  >
+                    💬 Go comment
+                  </a>
                 </div>
 
                 {post.body && post.body.length > 20 && (
