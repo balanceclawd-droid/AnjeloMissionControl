@@ -5,6 +5,109 @@ import { useParams } from 'next/navigation'
 import MetricCard from '@/components/MetricCard'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 
+const OPPORTUNITY_TYPE_LABELS: Record<string, { label: string; color: string; tip: string }> = {
+  question: { label: '❓ Question', color: 'bg-blue-500/20 text-blue-400', tip: 'Someone is asking for advice — answer genuinely, mention Milo if relevant.' },
+  pain_point: { label: '😤 Pain Point', color: 'bg-red-500/20 text-red-400', tip: 'Someone is frustrated — empathise first, then offer a solution.' },
+  recommendation_request: { label: '🔍 Seeking Recommendation', color: 'bg-yellow-500/20 text-yellow-400', tip: 'They want a tool recommendation — this is a direct opening.' },
+  education: { label: '📚 Learning', color: 'bg-purple-500/20 text-purple-400', tip: 'Someone wants to learn — provide value first, naturally mention Milo.' },
+  general: { label: '💬 Discussion', color: 'bg-neutral-700 text-neutral-400', tip: 'Join the conversation naturally — add insight, build credibility.' },
+}
+
+function RedditInceptionSection({ clientId, vertical }: { clientId: string; vertical: string }) {
+  const [posts, setPosts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/reddit-opportunities`)
+      .then(r => r.json())
+      .then(d => { setPosts(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [clientId])
+
+  if (loading) return (
+    <div className="bg-bg-card border border-border rounded-lg p-6">
+      <p className="text-sm text-neutral-500">Loading Reddit opportunities...</p>
+    </div>
+  )
+
+  return (
+    <div className="bg-bg-card border border-border rounded-lg p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-white">🎯 Reddit Inception Opportunities</h3>
+          <p className="text-xs text-neutral-500 mt-0.5">Active conversations where organic engagement could drive awareness</p>
+        </div>
+        <span className="text-xs text-neutral-600">{posts.length} opportunities</span>
+      </div>
+
+      {posts.length === 0 ? (
+        <div className="text-center py-6">
+          <p className="text-sm text-neutral-500">No opportunities right now.</p>
+          <p className="text-xs text-neutral-600 mt-1">Run a Reddit scrape to pull fresh conversations.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {posts.map((post: any) => {
+            const typeInfo = OPPORTUNITY_TYPE_LABELS[post.opportunity_type] || OPPORTUNITY_TYPE_LABELS.general
+            return (
+              <div key={post.id} className="border border-border/60 rounded-lg p-4 space-y-2 hover:border-border transition-colors">
+                <div className="flex items-start justify-between gap-3">
+                  <a
+                    href={post.permalink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium text-white hover:text-accent-red hover:underline leading-snug flex-1"
+                  >
+                    {post.title}
+                  </a>
+                  <span className={`text-xs px-2 py-0.5 rounded shrink-0 font-medium ${typeInfo.color}`}>
+                    {typeInfo.label}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3 text-xs text-neutral-500">
+                  <span>r/{post.reddit_subreddits?.subreddit}</span>
+                  <span>·</span>
+                  <span>{post.num_comments} comments</span>
+                  <span>·</span>
+                  <span>{post.score} upvotes</span>
+                  <span>·</span>
+                  <span className={`font-medium ${post.signal_strength === 'high' ? 'text-green-400' : 'text-yellow-400'}`}>
+                    {post.signal_strength} signal
+                  </span>
+                </div>
+
+                {post.body && post.body.length > 20 && (
+                  <p className="text-xs text-neutral-500 line-clamp-2 border-l-2 border-border pl-2">
+                    {post.body.substring(0, 200)}{post.body.length > 200 ? '...' : ''}
+                  </p>
+                )}
+
+                <div className="bg-neutral-900 rounded px-3 py-2">
+                  <p className="text-xs text-neutral-400">
+                    <span className="text-accent-red font-medium">Angle: </span>
+                    {typeInfo.tip}
+                  </p>
+                </div>
+
+                {post.matchedKeywords?.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {post.matchedKeywords.slice(0, 4).map((kw: string) => (
+                      <span key={kw} className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-500">
+                        {kw}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const VERTICAL_LABELS: Record<string, string> = {
   trading_platform: 'Trading Platform',
   ai_trading: 'AI Trading',
@@ -324,6 +427,11 @@ export default function ClientDetail() {
             </table>
           )}
         </div>
+      )}
+
+      {/* Reddit Inception Opportunities */}
+      {['ai_trading', 'cex', 'gaming_web3'].includes(client.vertical) && (
+        <RedditInceptionSection clientId={String(client.id)} vertical={client.vertical} />
       )}
     </div>
   )
