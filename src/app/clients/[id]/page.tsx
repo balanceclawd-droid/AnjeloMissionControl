@@ -41,9 +41,7 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
       return [
         `${i + 1}. ${post.title}`,
         `   Link: ${post.permalink}`,
-        `   Type: ${typeInfo.label.replace(/[^\w\s]/g, '').trim()}`,
         `   Angle: ${typeInfo.tip}`,
-        `   Subreddit: r/${post.reddit_subreddits?.subreddit} · ${post.num_comments} comments · ${post.score} upvotes`,
       ].join('\n')
     }).join('\n\n')
 
