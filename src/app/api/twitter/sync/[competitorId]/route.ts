@@ -160,3 +160,76 @@ export async function POST(_req: NextRequest, { params }: { params: { competitor
     return NextResponse.json({ error: err.message || 'Sync failed' }, { status: 500 })
   }
 }
+
+// PUT — ingest locally scraped tweets (Safari scraper, no RapidAPI needed)
+export async function PUT(req: NextRequest, { params }: { params: { competitorId: string } }) {
+  try {
+    const body = await req.json()
+    const tweets: any[] = body.tweets || []
+
+    if (!tweets.length) {
+      return NextResponse.json({ synced: 0, total: 0 })
+    }
+
+    const { data: competitor, error: compError } = await supabase
+      .from('competitors')
+      .select('*')
+      .eq('id', params.competitorId)
+      .single()
+
+    if (compError || !competitor) {
+      return NextResponse.json({ error: 'Competitor not found' }, { status: 404 })
+    }
+
+    // Normalise engagement scores relative to batch
+    const rawScores = tweets.map(t => (t.likes || 0) * 2 + (t.retweets || 0) * 3 + (t.replies || 0) + (t.bookmarks || 0) * 4)
+    const maxRaw = Math.max(...rawScores, 1)
+    const scores = rawScores.map(s => Math.min(100, Math.round((s / maxRaw) * 100)))
+
+    let synced = 0
+    const errors: string[] = []
+
+    for (const [i, tweet] of tweets.entries()) {
+      const content = tweet.text || tweet.full_text || ''
+      if (!content) continue
+
+      const classification = await classifyCompetitivePostWithFallback({
+        content,
+        engagement_score: scores[i],
+        bookmark_count: tweet.bookmarks || 0,
+        quote_count: tweet.quotes || 0,
+        conversation_depth: (tweet.replies || 0) + (tweet.quotes || 0),
+      })
+
+      const post = {
+        competitor_id: competitor.id,
+        platform: 'twitter',
+        content,
+        posted_at: tweet.created_at ? new Date(tweet.created_at).toISOString() : new Date().toISOString(),
+        engagement_score: scores[i],
+        hook_type: classification.hook_type,
+        hook_text: classification.hook_text,
+        structure: classification.structure,
+        cta_type: classification.cta_type,
+        visual_type: classification.visual_type,
+        visual_description: classification.visual_description,
+        flagged_as_pattern: classification.flagged_as_pattern,
+        twitter_post_id: String(tweet.id || tweet.id_str || ''),
+        bookmark_count: tweet.bookmarks || 0,
+        quote_count: tweet.quotes || 0,
+        conversation_depth: (tweet.replies || 0) + (tweet.quotes || 0),
+      }
+
+      const { error } = await saveCompetitivePost(post)
+      if (error) {
+        errors.push(error.message)
+      } else {
+        synced++
+      }
+    }
+
+    return NextResponse.json({ synced, total: tweets.length, errors })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Ingest failed' }, { status: 500 })
+  }
+}
