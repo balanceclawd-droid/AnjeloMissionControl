@@ -18,13 +18,15 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [copied, setCopied] = useState(false)
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'all'>('week')
 
   useEffect(() => {
-    fetch(`/api/clients/${clientId}/reddit-opportunities`)
+    setLoading(true)
+    fetch(`/api/clients/${clientId}/reddit-opportunities?date=${dateFilter}`)
       .then(r => r.json())
       .then(d => { setPosts(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [clientId])
+  }, [clientId, dateFilter])
 
   const toggleSelect = (id: number) => {
     setSelected(prev => {
@@ -65,7 +67,21 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
           <h3 className="text-sm font-semibold text-white">🎯 Reddit Inception Opportunities</h3>
           <p className="text-xs text-neutral-500 mt-0.5">Select posts to copy as a brief for your team</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Date filter */}
+          <div className="flex gap-1">
+            {([['today', 'Today'], ['week', 'This Week'], ['all', 'All']] as const).map(([val, label]) => (
+              <button
+                key={val}
+                onClick={() => setDateFilter(val)}
+                className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
+                  dateFilter === val ? 'bg-accent-red text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <span className="text-xs text-neutral-600">{posts.length} opportunities</span>
           {selected.size > 0 && (
             <button

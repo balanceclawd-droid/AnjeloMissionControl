@@ -55,8 +55,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   const subIds = subs.map((s: any) => s.id)
 
-  // Fetch recent high/medium signal posts from last 7 days
-  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  // Date filter — today / week (default 7d) / all (30d)
+  const dateParam = req.nextUrl.searchParams.get('date') || 'week'
+  const cutoffMs = dateParam === 'today'
+    ? Date.now() - 24 * 60 * 60 * 1000
+    : dateParam === 'all'
+    ? Date.now() - 30 * 24 * 60 * 60 * 1000
+    : Date.now() - 7 * 24 * 60 * 60 * 1000
+  const cutoff = new Date(cutoffMs).toISOString()
 
   const { data: posts, error: postsErr } = await supabase
     .from('reddit_posts')
