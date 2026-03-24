@@ -53,6 +53,10 @@ const FALLBACK_TOPICS = [
   'trading','market','launch','hack','regulation','airdrop','staking',
 ]
 
+export function extractTopicsFromPost(title: string, body: string, niche: string): string[] {
+  return extractTopics(title, body, niche)
+}
+
 function extractTopics(title: string, body: string, niche: string): string[] {
   const text = `${title} ${body}`.toLowerCase()
   const keywords = NICHE_TOPICS[niche] || FALLBACK_TOPICS
