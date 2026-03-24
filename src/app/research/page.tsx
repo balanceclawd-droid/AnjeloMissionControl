@@ -653,6 +653,7 @@ function RedditPostsSubTab({ initialTopic = '' }: { initialTopic?: string }) {
   const [topicFilter, setTopicFilter] = useState(initialTopic)
   const [signalFilter, setSignalFilter] = useState('')
   const [sort, setSort] = useState<'score' | 'date'>('score')
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'all'>('all')
   const [niches, setNiches] = useState<string[]>([])
 
   useEffect(() => {
@@ -667,16 +668,23 @@ function RedditPostsSubTab({ initialTopic = '' }: { initialTopic?: string }) {
 
   useEffect(() => {
     setLoading(true)
-    const params = new URLSearchParams({ limit: '50', sort })
+    const params = new URLSearchParams({ limit: '100', sort })
     if (niche) params.set('niche', niche)
     if (subredditFilter.trim()) params.set('subreddit', subredditFilter.trim())
     if (topicFilter.trim()) params.set('topic', topicFilter.trim())
     if (signalFilter) params.set('signal', signalFilter)
+    if (dateFilter === 'today') {
+      const today = new Date(); today.setHours(0,0,0,0)
+      params.set('since', today.toISOString())
+    } else if (dateFilter === 'week') {
+      const week = new Date(); week.setDate(week.getDate() - 7)
+      params.set('since', week.toISOString())
+    }
     fetch(`/api/reddit/posts?${params}`)
       .then(r => r.json())
       .then(d => { setPosts(Array.isArray(d) ? d : []); setLoading(false) })
       .catch(() => setLoading(false))
-  }, [niche, subredditFilter, topicFilter, signalFilter, sort])
+  }, [niche, subredditFilter, topicFilter, signalFilter, sort, dateFilter])
 
   return (
     <div className="space-y-4">
@@ -718,6 +726,21 @@ function RedditPostsSubTab({ initialTopic = '' }: { initialTopic?: string }) {
           <option value="medium">🟡 Medium</option>
           <option value="low">⚪ Low (headlines)</option>
         </select>
+        {/* Date filter */}
+        <div className="flex gap-1">
+          {([['today', 'Today'], ['week', 'This Week'], ['all', 'All']] as const).map(([val, label]) => (
+            <button
+              key={val}
+              onClick={() => setDateFilter(val)}
+              className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                dateFilter === val ? 'bg-accent-red text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex gap-1 ml-auto">
           {(['score', 'date'] as const).map(s => (
             <button
@@ -747,7 +770,8 @@ function RedditPostsSubTab({ initialTopic = '' }: { initialTopic?: string }) {
                 <th className="text-left px-3 py-3 text-xs text-neutral-500 font-medium w-20">Signal</th>
                 <th className="text-left px-3 py-3 text-xs text-neutral-500 font-medium w-28">Subreddit</th>
                 <th className="text-right px-3 py-3 text-xs text-neutral-500 font-medium w-20">Comments</th>
-                <th className="text-right px-3 py-3 text-xs text-neutral-500 font-medium w-24">Date</th>
+                <th className="text-right px-3 py-3 text-xs text-neutral-500 font-medium w-24">Post Date</th>
+                <th className="text-right px-3 py-3 text-xs text-neutral-500 font-medium w-24">Scraped</th>
               </tr>
             </thead>
             <tbody>
@@ -781,6 +805,9 @@ function RedditPostsSubTab({ initialTopic = '' }: { initialTopic?: string }) {
                   <td className="px-3 py-2.5 text-right text-xs text-neutral-500">{p.num_comments?.toLocaleString()}</td>
                   <td className="px-3 py-2.5 text-right text-xs text-neutral-500">
                     {new Date(p.created_utc).toLocaleDateString()}
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-xs text-neutral-400">
+                    {p.created_at ? new Date(p.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}
                   </td>
                 </tr>
               ))}

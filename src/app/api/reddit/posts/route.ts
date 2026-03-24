@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
   const signalFilter = searchParams.get('signal') // high | medium | low
   const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100)
   const sort = searchParams.get('sort') === 'date' ? 'created_utc' : 'score'
+  const since = searchParams.get('since') // ISO date string e.g. 2026-03-24
 
   // Get matching subreddit IDs if filtering
   let subredditIds: number[] | null = null
@@ -25,11 +26,15 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from('reddit_posts')
     .select(`
-      id, reddit_post_id, title, score, num_comments, created_utc, permalink, flair, topics, signal_strength,
+      id, reddit_post_id, title, score, num_comments, created_utc, created_at, permalink, flair, topics, signal_strength,
       reddit_subreddits!inner(subreddit, niche)
     `)
     .order(sort, { ascending: false })
     .limit(limit)
+
+  if (since) {
+    query = query.gte('created_at', since)
+  }
 
   if (subredditIds) {
     query = query.in('subreddit_id', subredditIds)
