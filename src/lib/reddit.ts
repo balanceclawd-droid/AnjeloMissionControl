@@ -53,124 +53,84 @@ const FALLBACK_TOPICS = [
   'trading','market','launch','hack','regulation','airdrop','staking',
 ]
 
-const APIFY_TOKEN = process.env.APIFY_TOKEN || ''
-const APIFY_ACTOR_ID = 'FgJtjDwJCLhRH9saM'
-
 function extractTopics(title: string, body: string, niche: string): string[] {
   const text = `${title} ${body}`.toLowerCase()
   const keywords = NICHE_TOPICS[niche] || FALLBACK_TOPICS
   return keywords.filter(kw => text.includes(kw))
 }
 
-// Trigger an Apify actor run for a batch of subreddits and return the dataset items
+// Scrape a batch of subreddits via Reddit's free public JSON API — no Apify needed
 export async function scrapeSubredditsViaApify(subreddits: string[], maxPostsPerSub = 25, nicheMap: Record<string, string> = {}): Promise<{ subreddit: string; posts: RedditPost[] }[]> {
-  const startUrls = subreddits.map(s => ({
-    url: `https://www.reddit.com/r/${s}/top/?t=day`,
-  }))
-
-  // Start the run
-  const runRes = await fetch(`https://api.apify.com/v2/acts/${APIFY_ACTOR_ID}/runs?token=${APIFY_TOKEN}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      startUrls,
-      maxPostCount: maxPostsPerSub,
-      maxComments: 0,
-      sort: 'top',
-      searchPosts: true,
-      searchComments: false,
-      searchCommunities: false,
-      searchUsers: false,
-      skipComments: true,
-      skipCommunity: true,
-      skipUserPosts: true,
-      includeNSFW: false,
-      debugMode: false,
-      proxy: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] },
-    }),
-  })
-
-  if (!runRes.ok) {
-    const text = await runRes.text()
-    throw new Error(`Apify run failed: ${runRes.status} — ${text}`)
-  }
-
-  const runData = await runRes.json()
-  const runId = runData?.data?.id
-  const datasetId = runData?.data?.defaultDatasetId
-  if (!runId || !datasetId) throw new Error('Apify run did not return runId/datasetId')
-
-  // Poll until finished (max 90s)
-  const deadline = Date.now() + 90_000
-  while (Date.now() < deadline) {
-    await sleep(5000)
-    const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`)
-    const statusData = await statusRes.json()
-    const status = statusData?.data?.status
-    if (status === 'SUCCEEDED') break
-    if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED-OUT') {
-      throw new Error(`Apify run ${status}`)
-    }
-  }
-
-  // Fetch dataset items
-  const itemsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=1000`)
-  if (!itemsRes.ok) throw new Error(`Failed to fetch Apify dataset: ${itemsRes.status}`)
-  const items: any[] = await itemsRes.json()
-
-  // Group by subreddit and map to RedditPost shape
-  const grouped: Record<string, RedditPost[]> = {}
+  const results: { subreddit: string; posts: RedditPost[] }[] = []
   const cutoff = Date.now() - 48 * 60 * 60 * 1000
 
-  for (const item of items) {
-    if (item.dataType !== 'post') continue
+  for (const subreddit of subreddits) {
+    try {
+      const url = `https://www.reddit.com/r/${subreddit}/top.json?t=day&limit=${maxPostsPerSub}`
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'AnjeloMissionControl/1.0' },
+        signal: AbortSignal.timeout(10000),
+      })
 
-    const subreddit = item.parsedCommunityName || item.communityName?.replace('r/', '') || ''
-    if (!subreddit) continue
+      if (!res.ok) {
+        results.push({ subreddit, posts: [] })
+        continue
+      }
 
-    const createdAt = item.createdAt ? new Date(item.createdAt).getTime() : 0
-    if (createdAt < cutoff) continue // too old
+      const data = await res.json()
+      const children: any[] = data?.data?.children || []
+      const niche = nicheMap[subreddit.toLowerCase()] || 'General'
+      const posts: RedditPost[] = []
 
-    const isSelf = !item.link || item.link === item.url
-    const comments = item.numberOfComments || 0
-    const body = item.body || ''
+      for (const child of children) {
+        const item = child.data
+        if (!item || item.stickied) continue
 
-    // Filter low-signal
-    if (item.isAd) continue
-    if (!isSelf && comments < 3) continue
-    if (isSelf && body.length < 30 && comments < 3) continue
+        const createdAt = item.created_utc ? item.created_utc * 1000 : 0
+        if (createdAt && createdAt < cutoff) continue
 
-    // Signal strength
-    let signal_strength: 'high' | 'medium' | 'low'
-    if (isSelf && comments >= 10) signal_strength = 'high'
-    else if (isSelf && comments >= 5) signal_strength = 'medium'
-    else if (!isSelf && comments >= 15) signal_strength = 'medium'
-    else signal_strength = 'low'
+        const isSelf = item.is_self || false
+        const comments = item.num_comments || 0
+        const body = item.selftext || ''
 
-    const title = item.title || ''
-    const niche = nicheMap[subreddit.toLowerCase()] || 'General'
+        if (item.over_18) continue
+        if (!isSelf && comments < 3) continue
+        if (isSelf && body.length < 30 && comments < 3) continue
 
-    const post: RedditPost = {
-      reddit_post_id: item.parsedId || item.id || '',
-      title,
-      body,
-      author: item.username || '',
-      url: item.link || item.url || '',
-      permalink: item.url || '',
-      score: item.upVotes || 0,
-      upvote_ratio: item.upVoteRatio || 0,
-      num_comments: comments,
-      created_utc: item.createdAt || new Date().toISOString(),
-      flair: item.flair || null,
-      topics: extractTopics(title, body, niche),
-      signal_strength,
+        let signal_strength: 'high' | 'medium' | 'low'
+        if (isSelf && comments >= 10) signal_strength = 'high'
+        else if (isSelf && comments >= 5) signal_strength = 'medium'
+        else if (!isSelf && comments >= 15) signal_strength = 'medium'
+        else signal_strength = 'low'
+
+        const title = item.title || ''
+        posts.push({
+          reddit_post_id: item.id || '',
+          title,
+          body,
+          author: item.author || '',
+          url: item.url || '',
+          permalink: `https://reddit.com${item.permalink || ''}`,
+          score: item.score || 0,
+          upvote_ratio: item.upvote_ratio || 0,
+          num_comments: comments,
+          created_utc: new Date(item.created_utc * 1000).toISOString(),
+          flair: item.link_flair_text || null,
+          topics: extractTopics(title, body, niche),
+          signal_strength,
+        })
+      }
+
+      results.push({ subreddit, posts })
+
+      // Small delay to be polite to Reddit's API
+      await sleep(500)
+    } catch {
+      results.push({ subreddit, posts: [] })
     }
-
-    if (!grouped[subreddit]) grouped[subreddit] = []
-    grouped[subreddit].push(post)
   }
 
-  return subreddits.map(s => ({ subreddit: s, posts: grouped[s] || [] }))
+  return results
 }
 
 // Legacy single-subreddit wrapper (kept for backwards compat)
