@@ -6,12 +6,20 @@ Uses Reddit's public JSON API (no auth needed, no Apify).
 
 import json
 import time
+import random
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
 
 MISSION_CONTROL_URL = "https://anjelo-mission-control.vercel.app"
-USER_AGENT = "AnjeloMissionControl/1.0"
+
+# Rotate user agents to avoid detection
+USER_AGENTS = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+]
 
 SUBREDDITS = [
     # CEX
@@ -36,16 +44,37 @@ SUBREDDITS = [
     {"subreddit": "solana", "niche": "Memecoin"},
 ]
 
-def fetch_subreddit(subreddit: str, limit: int = 25) -> list:
+def fetch_subreddit(subreddit: str, limit: int = 25, retries: int = 3) -> list:
     url = f"https://www.reddit.com/r/{subreddit}/top.json?t=day&limit={limit}"
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    try:
-        resp = urllib.request.urlopen(req, timeout=15)
-        data = json.loads(resp.read())
-        return data.get("data", {}).get("children", [])
-    except Exception as e:
-        print(f"  ⚠ Failed r/{subreddit}: {e}")
-        return []
+    for attempt in range(retries):
+        try:
+            ua = random.choice(USER_AGENTS)
+            req = urllib.request.Request(url, headers={
+                "User-Agent": ua,
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cache-Control": "no-cache",
+            })
+            resp = urllib.request.urlopen(req, timeout=15)
+            data = json.loads(resp.read())
+            return data.get("data", {}).get("children", [])
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                wait = 10 * (attempt + 1)
+                print(f"  ⚠ Rate limited r/{subreddit} — waiting {wait}s")
+                time.sleep(wait)
+            elif e.code == 403:
+                wait = 5 * (attempt + 1)
+                print(f"  ⚠ 403 r/{subreddit} — waiting {wait}s (attempt {attempt+1}/{retries})")
+                time.sleep(wait)
+            else:
+                print(f"  ⚠ HTTP {e.code} r/{subreddit}")
+                return []
+        except Exception as e:
+            print(f"  ⚠ Failed r/{subreddit}: {e}")
+            return []
+    print(f"  ✗ Gave up on r/{subreddit} after {retries} attempts")
+    return []
 
 def post_to_mission_control(endpoint: str, payload: dict) -> dict:
     data = json.dumps(payload).encode()
@@ -137,7 +166,7 @@ def main():
         if result.get("error"):
             print(f"  ⚠ Error: {result['error']}")
 
-        time.sleep(1)  # polite delay
+        time.sleep(random.uniform(2, 4))  # random delay to avoid detection
 
     print(f"\n{'=' * 50}")
     print(f"Done — {total_posts} fetched, {total_inserted} inserted, {total_trends} trends")
