@@ -83,6 +83,21 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
             ))}
           </div>
           <span className="text-xs text-neutral-600">{posts.length} opportunities</span>
+          {/* Select All / Deselect All */}
+          {posts.length > 0 && (
+            <button
+              onClick={() => {
+                if (selected.size === posts.length) {
+                  setSelected(new Set())
+                } else {
+                  setSelected(new Set(posts.map((p: any) => p.id)))
+                }
+              }}
+              className="text-xs px-2.5 py-1 rounded-lg bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+            >
+              {selected.size === posts.length ? 'Deselect All' : 'Select All'}
+            </button>
+          )}
           {selected.size > 0 && (
             <button
               onClick={copyForTeam}
