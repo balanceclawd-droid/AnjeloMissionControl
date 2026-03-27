@@ -38,17 +38,20 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
 
   const copyForTeam = () => {
     const selectedPosts = posts.filter(p => selected.has(p.id))
-    const text = selectedPosts.map((post, i) => {
+    // Tab-separated for Google Sheets paste: # | Title | Link | Angle | Status | Notes
+    const rows = selectedPosts.map((post, i) => {
       const typeInfo = OPPORTUNITY_TYPE_LABELS[post.opportunity_type] || OPPORTUNITY_TYPE_LABELS.general
       return [
-        `${i + 1}. ${post.title}`,
-        `   Link: ${post.permalink}`,
-        `   Angle: ${typeInfo.tip}`,
-      ].join('\n')
-    }).join('\n\n')
-
-    const full = `Reddit Engagement Tasks\n${'='.repeat(30)}\n\n${text}\n\nGo in, add genuine value, and naturally weave in the product where it fits. Do NOT spam or hard sell.`
-    navigator.clipboard.writeText(full).then(() => {
+        String(i + 1),
+        post.title,
+        post.permalink,
+        typeInfo.tip,
+        'Not replied',
+        '',
+      ].join('\t')
+    })
+    const tsv = rows.join('\n')
+    navigator.clipboard.writeText(tsv).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2500)
     })
