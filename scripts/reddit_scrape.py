@@ -45,13 +45,18 @@ SUBREDDITS = [
 ]
 
 def fetch_subreddit(subreddit: str, limit: int = 25, retries: int = 3) -> list:
-    url = f"https://www.reddit.com/r/{subreddit}/top.json?t=day&limit={limit}"
+    # Try old.reddit.com first (lighter anti-bot), fall back to www.reddit.com
+    urls = [
+        f"https://old.reddit.com/r/{subreddit}/top.json?t=day&limit={limit}",
+        f"https://www.reddit.com/r/{subreddit}/top.json?t=day&limit={limit}",
+    ]
     for attempt in range(retries):
+        url = urls[0] if attempt < 2 else urls[1]  # try old.reddit first
         try:
             ua = random.choice(USER_AGENTS)
             req = urllib.request.Request(url, headers={
                 "User-Agent": ua,
-                "Accept": "application/json, text/plain, */*",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
                 "Cache-Control": "no-cache",
             })
