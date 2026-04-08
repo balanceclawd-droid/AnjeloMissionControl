@@ -33,6 +33,11 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
     }).catch(() => setLoading(false))
   }, [clientId, dateFilter])
 
+  const combinedOpportunities = [
+    ...browserLeads.map((lead: any) => ({ ...lead, __kind: 'browser' })),
+    ...posts.map((post: any) => ({ ...post, __kind: 'db' })),
+  ]
+
   const toggleSelect = (id: number) => {
     setSelected(prev => {
       const next = new Set(prev)
@@ -42,9 +47,9 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
   }
 
   const copyForTeam = () => {
-    const selectedPosts = posts.filter(p => selected.has(p.id))
+    const selectedPosts = combinedOpportunities.filter((p: any) => selected.has(p.id))
     // Tab-separated for Google Sheets paste: # | Title | Link | Angle | Status | Notes
-    const rows = selectedPosts.map((post, i) => {
+    const rows = selectedPosts.map((post: any, i: number) => {
       const typeInfo = OPPORTUNITY_TYPE_LABELS[post.opportunity_type] || OPPORTUNITY_TYPE_LABELS.general
       return [
         String(i + 1),
@@ -90,20 +95,20 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
               </button>
             ))}
           </div>
-          <span className="text-xs text-neutral-600">{posts.length} opportunities</span>
+          <span className="text-xs text-neutral-600">{combinedOpportunities.length} opportunities</span>
           {/* Select All / Deselect All */}
-          {posts.length > 0 && (
+          {combinedOpportunities.length > 0 && (
             <button
               onClick={() => {
-                if (selected.size === posts.length) {
+                if (selected.size === combinedOpportunities.length) {
                   setSelected(new Set())
                 } else {
-                  setSelected(new Set(posts.map((p: any) => p.id)))
+                  setSelected(new Set(combinedOpportunities.map((p: any) => p.id)))
                 }
               }}
               className="text-xs px-2.5 py-1 rounded-lg bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
             >
-              {selected.size === posts.length ? 'Deselect All' : 'Select All'}
+              {selected.size === combinedOpportunities.length ? 'Deselect All' : 'Select All'}
             </button>
           )}
           {selected.size > 0 && (
