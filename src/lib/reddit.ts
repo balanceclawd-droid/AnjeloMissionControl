@@ -63,9 +63,22 @@ function extractTopics(title: string, body: string, niche: string): string[] {
   return keywords.filter(kw => text.includes(kw))
 }
 
-// Scrape a batch of subreddits via Reddit's free public JSON API — no Apify needed
-export async function scrapeSubredditsViaApify(subreddits: string[], maxPostsPerSub = 25, nicheMap: Record<string, string> = {}): Promise<{ subreddit: string; posts: RedditPost[] }[]> {
-  const results: { subreddit: string; posts: RedditPost[] }[] = []
+export interface RedditScrapeResult {
+  subreddit: string
+  posts: RedditPost[]
+  error?: string
+  source: 'public-json'
+}
+
+// Temporary unauthenticated Reddit fetcher.
+// Reddit now blocks this path intermittently/fully from some hosts, so callers must
+// treat empty results differently from explicit source blocking.
+export async function scrapeSubredditsViaPublicJson(
+  subreddits: string[],
+  maxPostsPerSub = 25,
+  nicheMap: Record<string, string> = {}
+): Promise<RedditScrapeResult[]> {
+  const results: RedditScrapeResult[] = []
   const cutoff = Date.now() - 48 * 60 * 60 * 1000
 
   for (const subreddit of subreddits) {
@@ -77,7 +90,10 @@ export async function scrapeSubredditsViaApify(subreddits: string[], maxPostsPer
       })
 
       if (!res.ok) {
-        results.push({ subreddit, posts: [] })
+        let error = `HTTP ${res.status}`
+        if (res.status === 403) error = 'Reddit public JSON blocked (HTTP 403)'
+        else if (res.status === 429) error = 'Reddit rate limited public JSON (HTTP 429)'
+        results.push({ subreddit, posts: [], error, source: 'public-json' })
         continue
       }
 
@@ -125,21 +141,33 @@ export async function scrapeSubredditsViaApify(subreddits: string[], maxPostsPer
         })
       }
 
-      results.push({ subreddit, posts })
-
-      // Small delay to be polite to Reddit's API
+      results.push({ subreddit, posts, source: 'public-json' })
       await sleep(500)
-    } catch {
-      results.push({ subreddit, posts: [] })
+    } catch (err: any) {
+      results.push({
+        subreddit,
+        posts: [],
+        error: err?.message || 'Public JSON fetch failed',
+        source: 'public-json',
+      })
     }
   }
 
   return results
 }
 
+// Backwards-compatible wrapper name kept temporarily so callers don't break.
+export async function scrapeSubredditsViaApify(
+  subreddits: string[],
+  maxPostsPerSub = 25,
+  nicheMap: Record<string, string> = {}
+): Promise<RedditScrapeResult[]> {
+  return scrapeSubredditsViaPublicJson(subreddits, maxPostsPerSub, nicheMap)
+}
+
 // Legacy single-subreddit wrapper (kept for backwards compat)
 export async function scrapeSubreddit(subreddit: string): Promise<RedditPost[]> {
-  const results = await scrapeSubredditsViaApify([subreddit])
+  const results = await scrapeSubredditsViaPublicJson([subreddit])
   return results[0]?.posts || []
 }
 

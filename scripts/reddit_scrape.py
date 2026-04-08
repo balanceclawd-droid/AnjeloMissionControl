@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Reddit scraper — runs locally on Mac mini, posts results to Mission Control.
-Uses Reddit's public JSON API (no auth needed, no Apify).
+Temporary implementation uses Reddit's public JSON endpoints, which may be blocked.
+This script now reports source blocking clearly so the failure is diagnosable.
 """
 
 import json
@@ -44,7 +45,7 @@ SUBREDDITS = [
     {"subreddit": "solana", "niche": "Memecoin"},
 ]
 
-def fetch_subreddit(subreddit: str, limit: int = 25, retries: int = 3) -> list:
+def fetch_subreddit(subreddit: str, limit: int = 25, retries: int = 3) -> tuple[list, str | None]:
     # Try old.reddit.com first (lighter anti-bot), fall back to www.reddit.com
     urls = [
         f"https://old.reddit.com/r/{subreddit}/top.json?t=day&limit={limit}",
@@ -62,7 +63,7 @@ def fetch_subreddit(subreddit: str, limit: int = 25, retries: int = 3) -> list:
             })
             resp = urllib.request.urlopen(req, timeout=15)
             data = json.loads(resp.read())
-            return data.get("data", {}).get("children", [])
+            return data.get("data", {}).get("children", []), None
         except urllib.error.HTTPError as e:
             if e.code == 429:
                 wait = 10 * (attempt + 1)
@@ -70,16 +71,16 @@ def fetch_subreddit(subreddit: str, limit: int = 25, retries: int = 3) -> list:
                 time.sleep(wait)
             elif e.code == 403:
                 wait = 5 * (attempt + 1)
-                print(f"  ⚠ 403 r/{subreddit} — waiting {wait}s (attempt {attempt+1}/{retries})")
+                print(f"  ⚠ 403 r/{subreddit} — Reddit public JSON blocked, waiting {wait}s (attempt {attempt+1}/{retries})")
                 time.sleep(wait)
             else:
                 print(f"  ⚠ HTTP {e.code} r/{subreddit}")
-                return []
+                return [], f"HTTP {e.code}"
         except Exception as e:
             print(f"  ⚠ Failed r/{subreddit}: {e}")
-            return []
+            return [], str(e)
     print(f"  ✗ Gave up on r/{subreddit} after {retries} attempts")
-    return []
+    return [], "Reddit public JSON blocked or unavailable"
 
 def post_to_mission_control(endpoint: str, payload: dict) -> dict:
     data = json.dumps(payload).encode()
@@ -111,7 +112,10 @@ def main():
         niche = sub_config["niche"]
 
         print(f"\n→ r/{sub} ({niche})")
-        children = fetch_subreddit(sub, limit=25)
+        children, fetch_error = fetch_subreddit(sub, limit=25)
+
+        if fetch_error:
+            print(f"  ⚠ Source error: {fetch_error}")
 
         posts = []
         for child in children:

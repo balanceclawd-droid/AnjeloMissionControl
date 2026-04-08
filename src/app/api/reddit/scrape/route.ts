@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { scrapeSubredditsViaApify, detectTrends } from '@/lib/reddit'
+import { scrapeSubredditsViaPublicJson, detectTrends } from '@/lib/reddit'
 
 export const maxDuration = 60 // Vercel max for hobby plan
 
@@ -36,7 +36,9 @@ export async function POST(req: Request) {
 
   try {
     const subNames = subreddits.map((s: any) => s.subreddit)
-    const results = await scrapeSubredditsViaApify(subNames, 25, nicheMap)
+    const results = await scrapeSubredditsViaPublicJson(subNames, 25, nicheMap)
+    const sourceErrors = results.filter(r => r.error).map(r => `r/${r.subreddit}: ${r.error}`)
+    if (sourceErrors.length > 0) errors.push(...sourceErrors)
 
     for (const { subreddit, posts } of results) {
       const sub = subMap[subreddit.toLowerCase()]
@@ -86,7 +88,7 @@ export async function POST(req: Request) {
       }
     }
   } catch (err: any) {
-    errors.push(`Apify scrape error: ${err.message}`)
+    errors.push(`Reddit scrape error: ${err.message}`)
   }
 
   // Detect trends per niche and upsert
@@ -119,6 +121,8 @@ export async function POST(req: Request) {
     scraped_subreddits,
     posts_inserted,
     trends_detected,
+    source: 'public-json',
+    source_blocked: errors.some(e => e.includes('HTTP 403') || e.includes('blocked')),
     ...(errors.length > 0 ? { errors } : {}),
   })
 }
