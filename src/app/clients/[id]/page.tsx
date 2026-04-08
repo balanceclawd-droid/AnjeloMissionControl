@@ -15,6 +15,7 @@ const OPPORTUNITY_TYPE_LABELS: Record<string, { label: string; color: string; ti
 
 function RedditInceptionSection({ clientId }: { clientId: string }) {
   const [posts, setPosts] = useState<any[]>([])
+  const [browserLeads, setBrowserLeads] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [copied, setCopied] = useState(false)
@@ -22,10 +23,14 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
 
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/clients/${clientId}/reddit-opportunities?date=${dateFilter}`)
-      .then(r => r.json())
-      .then(d => { setPosts(Array.isArray(d) ? d : []); setLoading(false) })
-      .catch(() => setLoading(false))
+    Promise.all([
+      fetch(`/api/clients/${clientId}/reddit-opportunities?date=${dateFilter}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/clients/${clientId}/browser-leads?limit=20`).then(r => r.json()).catch(() => []),
+    ]).then(([opps, leads]) => {
+      setPosts(Array.isArray(opps) ? opps : [])
+      setBrowserLeads(Array.isArray(leads) ? leads : [])
+      setLoading(false)
+    }).catch(() => setLoading(false))
   }, [clientId, dateFilter])
 
   const toggleSelect = (id: number) => {
@@ -112,13 +117,86 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
         </div>
       </div>
 
-      {posts.length === 0 ? (
+      {posts.length === 0 && browserLeads.length === 0 ? (
         <div className="text-center py-6">
           <p className="text-sm text-neutral-500">No opportunities right now.</p>
-          <p className="text-xs text-neutral-600 mt-1">Run a Reddit scrape to pull fresh conversations.</p>
+          <p className="text-xs text-neutral-600 mt-1">Run a Reddit scrape or browser lead collection to pull fresh conversations.</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-5">
+          {browserLeads.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-semibold tracking-wide uppercase text-accent-red">Browser-sourced leads</h4>
+                  <p className="text-xs text-neutral-500 mt-0.5">Fresh Reddit opportunities collected from browser pages for manual commenting.</p>
+                </div>
+                <span className="text-xs text-neutral-600">{browserLeads.length} leads</span>
+              </div>
+              {browserLeads.map((lead: any) => {
+                const typeInfo = OPPORTUNITY_TYPE_LABELS[lead.opportunity_type] || OPPORTUNITY_TYPE_LABELS.general
+                return (
+                  <div key={`browser-${lead.id}`} className="border border-accent-red/20 rounded-lg p-4 space-y-2 bg-accent-red/5">
+                    <div className="flex items-start justify-between gap-3">
+                      <a
+                        href={lead.permalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium text-white hover:text-accent-red hover:underline leading-snug flex-1"
+                      >
+                        {lead.title}
+                      </a>
+                      <span className={`text-xs px-2 py-0.5 rounded shrink-0 font-medium ${typeInfo.color}`}>
+                        {typeInfo.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 text-xs text-neutral-500 flex-wrap">
+                        <span>r/{lead.subreddit}</span>
+                        <span>·</span>
+                        <span>{lead.comment_count || 0} comments</span>
+                        {lead.posted_at_text && <><span>·</span><span>{lead.posted_at_text}</span></>}
+                        <span>·</span>
+                        <span className="text-white font-medium">score {Math.round(lead.relevance_score || 0)}</span>
+                      </div>
+                      <a
+                        href={lead.permalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-medium px-3 py-1.5 rounded-lg bg-accent-red text-white hover:opacity-90 transition-colors shrink-0"
+                      >
+                        💬 Go comment
+                      </a>
+                    </div>
+                    {lead.snippet && (
+                      <p className="text-xs text-neutral-400 border-l-2 border-border pl-2">
+                        {lead.snippet}
+                      </p>
+                    )}
+                    {lead.matched_keywords?.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {lead.matched_keywords.slice(0, 6).map((kw: string) => (
+                          <span key={kw} className="text-xs px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">
+                            {kw}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {posts.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-semibold tracking-wide uppercase text-neutral-400">Database-derived opportunities</h4>
+                  <p className="text-xs text-neutral-500 mt-0.5">Existing Reddit opportunities generated from ingested structured post data.</p>
+                </div>
+                <span className="text-xs text-neutral-600">{posts.length} opportunities</span>
+              </div>
           {posts.map((post: any) => {
             const typeInfo = OPPORTUNITY_TYPE_LABELS[post.opportunity_type] || OPPORTUNITY_TYPE_LABELS.general
             const isSelected = selected.has(post.id)
@@ -203,6 +281,8 @@ function RedditInceptionSection({ clientId }: { clientId: string }) {
               </div>
             )
           })}
+            </div>
+          )}
         </div>
       )}
     </div>
