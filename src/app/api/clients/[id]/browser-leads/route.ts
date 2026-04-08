@@ -30,6 +30,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   let query = supabase
     .from('reddit_browser_leads')
     .select('*')
+    .gte('relevance_score', vertical === 'ai_trading' ? 15 : 12)
+    .in('opportunity_type', ['question', 'pain_point', 'recommendation_request', 'education'])
     .order('relevance_score', { ascending: false })
     .order('collected_at', { ascending: false })
     .limit(limit)
