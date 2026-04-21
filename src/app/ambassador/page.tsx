@@ -114,6 +114,7 @@ export default function AmbassadorPage() {
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null)
   const [campaignForm, setCampaignForm] = useState<Partial<Campaign>>({})
   const [launchLoading, setLaunchLoading] = useState(false)
+  const [assigningCampaign, setAssigningCampaign] = useState<Campaign | null>(null)
 
   // Reply action state
   const [draftLoading, setDraftLoading] = useState<Record<string, boolean>>({})
@@ -274,6 +275,15 @@ export default function AmbassadorPage() {
     if (!confirm('Delete this campaign? This cannot be undone.')) return
     await fetch(`/api/ambassador/campaigns/${campaignId}`, { method: 'DELETE' })
     fetchCampaigns()
+  }
+
+  async function handleAssignToggle(contactId: string, assign: boolean) {
+    await fetch(`/api/ambassador/contacts/${contactId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaign_id: assign ? assigningCampaign?.id : null }),
+    })
+    fetchContacts()
   }
 
   async function handleGenerateDrafts(replyId: string) {
@@ -661,7 +671,8 @@ Supports: tab-separated, comma-separated, pipe-separated, bullet points, free te
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => { setEditingCampaign(c); setCampaignForm(c) }} className="flex-1 bg-neutral-800 text-neutral-300 px-3 py-2 rounded-lg text-sm hover:bg-neutral-700 transition-colors">Edit</button>
+                    <button onClick={() => { setAssigningCampaign(c); fetchContacts() }} className="flex-1 bg-blue-900 text-blue-300 px-3 py-2 rounded-lg text-sm hover:bg-blue-800 transition-colors">Assign Contacts</button>
+                    <button onClick={() => { setEditingCampaign(c); setCampaignForm(c) }} className="bg-neutral-800 text-neutral-300 px-3 py-2 rounded-lg text-sm hover:bg-neutral-700 transition-colors">Edit</button>
                     <button onClick={() => handleDeleteCampaign(c.id)} className="bg-neutral-800 text-neutral-500 px-3 py-2 rounded-lg text-sm hover:bg-red-900 hover:text-red-300 transition-colors">🗑</button>
                     <button onClick={() => handleLaunchCampaign(c.id)} disabled={launchLoading || c.status === 'active'} className="flex-1 bg-accent-red text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
                       {launchLoading ? '...' : 'Launch'}
@@ -779,6 +790,53 @@ Looking forward to connecting.`}
               </div>
             </div>
           )}
+
+          {/* ASSIGN CONTACTS DRAWER */}
+          {assigningCampaign && (
+            <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setAssigningCampaign(null)}>
+              <div className="absolute inset-0 bg-black/50" />
+              <div className="relative w-[520px] bg-neutral-900 border-l border-neutral-800 h-full overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex items-start justify-between mb-6">
+                  <div>
+                    <p className="text-xl font-semibold text-white">Assign Contacts</p>
+                    <p className="text-sm text-neutral-500 mt-1">{assigningCampaign.name}</p>
+                  </div>
+                  <button onClick={() => setAssigningCampaign(null)} className="text-neutral-500 hover:text-white text-xl">✕</button>
+                </div>
+
+                <p className="text-xs text-neutral-500 mb-3">Select contacts to assign to this campaign. Already assigned contacts are checked.</p>
+
+                <div className="space-y-2 mb-6 max-h-[60vh] overflow-y-auto">
+                  {contacts.length === 0 && (
+                    <p className="text-sm text-neutral-500 text-center py-8">No contacts yet. Import some first.</p>
+                  )}
+                  {contacts.map(contact => {
+                    const isAssigned = contact.campaign_id === assigningCampaign.id
+                    return (
+                      <div key={contact.id} className="flex items-center gap-3 p-3 rounded-lg bg-neutral-800 hover:bg-neutral-750 cursor-pointer transition-colors" onClick={() => handleAssignToggle(contact.id, !isAssigned)}>
+                        <input type="checkbox" checked={isAssigned} onChange={() => {}} className="w-4 h-4 rounded accent-red-500" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{contact.name || contact.email}</p>
+                          <p className="text-xs text-neutral-500 truncate">{contact.email}</p>
+                        </div>
+                        {isAssigned && <span className="text-xs text-blue-400">Assigned</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="border-t border-neutral-800 pt-4">
+                  <p className="text-sm text-neutral-400 mb-3">
+                    {contacts.filter(c => c.campaign_id === assigningCampaign.id).length} of {contacts.length} selected
+                  </p>
+                  <button onClick={() => setAssigningCampaign(null)} className="w-full bg-neutral-800 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-neutral-700 transition-colors">
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 
