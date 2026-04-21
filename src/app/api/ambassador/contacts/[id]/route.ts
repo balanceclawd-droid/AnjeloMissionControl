@@ -4,7 +4,7 @@ import { supabase } from '@/lib/db'
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const body = await req.json()
-    const allowed = ['status', 'linkedin_url', 'twitter_url', 'website_url', 'notes', 'name', 'company', 'role', 'campaign_id', 'next_step']
+    const allowed = ['status', 'linkedin_url', 'twitter_url', 'website_url', 'twitch_url', 'youtube_url', 'tiktok_url', 'instagram_url', 'discord_url', 'notes', 'name', 'company', 'role', 'campaign_id', 'next_step']
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
 
     for (const key of allowed) {
