@@ -88,7 +88,7 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_ORDER = ['new', 'contacted', 'replied', 'interested', 'not_interested', 'converted']
 
 export default function AmbassadorPage() {
-  const [activeTab, setActiveTab] = useState<'pipeline' | 'import' | 'campaigns' | 'inbox'>('pipeline')
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'import' | 'smart_import' | 'campaigns' | 'inbox'>('pipeline')
   const [contacts, setContacts] = useState<Contact[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [replies, setReplies] = useState<Reply[]>([])
@@ -98,6 +98,11 @@ export default function AmbassadorPage() {
   const [settings, setSettings] = useState<Settings>({ id: null, opportunity_brief: '', default_timezone: 'Europe/London', send_window_start: '09:00', send_window_end: '17:00' })
   const [toneExamples, setToneExamples] = useState<ToneExample[]>([])
   const [settingsSaving, setSettingsSaving] = useState(false)
+
+  // Smart import state
+  const [smartImportText, setSmartImportText] = useState('')
+  const [smartImportLoading, setSmartImportLoading] = useState(false)
+  const [smartImportResults, setSmartImportResults] = useState<Partial<Contact>[] | null>(null)
 
   // Import state
   const [importMode, setImportMode] = useState<'paste' | 'csv' | 'manual'>('paste')
@@ -154,6 +159,40 @@ export default function AmbassadorPage() {
     fetchCampaigns()
     fetchReplies()
   }, [fetchContacts, fetchCampaigns, fetchReplies])
+
+  async function handleSmartImport() {
+    if (!smartImportText.trim()) return
+    setSmartImportLoading(true)
+    setSmartImportResults(null)
+    try {
+      const res = await fetch('/api/ambassador/contacts/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawText: smartImportText }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setSmartImportResults(data.contacts)
+      }
+    } finally {
+      setSmartImportLoading(false)
+    }
+  }
+
+  async function handleSmartImportSave() {
+    if (!smartImportResults?.length) return
+    const res = await fetch('/api/ambassador/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contacts: smartImportResults }),
+    })
+    if (res.ok) {
+      setSmartImportText('')
+      setSmartImportResults(null)
+      setActiveTab('pipeline')
+      fetchContacts()
+    }
+  }
 
   async function handleImport() {
     setImportLoading(true)
@@ -337,7 +376,7 @@ export default function AmbassadorPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-neutral-800 mb-6">
-        {(['pipeline', 'import', 'campaigns', 'inbox'] as const).map(tab => (
+        {(['pipeline', 'import', 'smart_import', 'campaigns', 'inbox'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -345,7 +384,7 @@ export default function AmbassadorPage() {
               activeTab === tab ? 'border-accent-red text-white' : 'border-transparent text-neutral-500 hover:text-neutral-300'
             }`}
           >
-            {tab === 'pipeline' ? 'Pipeline' : tab === 'import' ? 'Import Contacts' : tab === 'campaigns' ? 'Campaigns' : 'Reply Inbox'}
+            {tab === 'pipeline' ? 'Pipeline' : tab === 'import' ? 'Import Contacts' : tab === 'smart_import' ? '✨ Smart Import' : tab === 'campaigns' ? 'Campaigns' : 'Reply Inbox'}
             {tab === 'inbox' && pendingReplies.length > 0 && (
               <span className="ml-2 bg-accent-red text-white text-xs px-2 py-0.5 rounded-full">{pendingReplies.length}</span>
             )}
@@ -512,6 +551,73 @@ export default function AmbassadorPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SMART IMPORT */}
+      {activeTab === 'smart_import' && (
+        <div className="max-w-3xl">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-white mb-1">✨ Smart Import</h2>
+              <p className="text-sm text-neutral-500">Paste any list of contacts — bullet points, CSV, whatever format. MiniMax figures out the rest.</p>
+            </div>
+            <textarea
+              value={smartImportText}
+              onChange={e => setSmartImportText(e.target.value)}
+              rows={16}
+              className="w-full text-sm"
+              placeholder={`Paste your contacts in any format. For example:
+
+John Smith | john@acme.com | Acme Corp | CEO | linkedin.com/in/johnsmith | @johnsmith
+jane@startup.io — Jane Doe, Founder at Startup.io
+@alice twitter.com/alice_nl twitch.tv/alice
+
+Supports: tab-separated, comma-separated, pipe-separated, bullet points, free text`}
+            />
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-xs text-neutral-600">{smartImportText.trim() ? 'Ready to parse — MiniMax will extract name, email, company, role, and all social links' : 'Paste your list above to get started'}</p>
+              <button
+                onClick={handleSmartImport}
+                disabled={smartImportLoading || !smartImportText.trim()}
+                className="bg-accent-red text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {smartImportLoading ? '🤖 Parsing...' : '🤖 Parse & Import'}
+              </button>
+            </div>
+            {smartImportResults && (
+              <div className="mt-5 border-t border-neutral-800 pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-medium text-white">Parsed {smartImportResults.length} contact{smartImportResults.length !== 1 ? 's' : ''}:</p>
+                  <button
+                    onClick={handleSmartImportSave}
+                    className="bg-emerald-800 text-emerald-200 px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-emerald-700 transition-colors"
+                  >
+                    ✅ Import All to Pipeline
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {smartImportResults.map((c, i) => (
+                    <div key={i} className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-sm">
+                      <p className="font-medium text-white">{c.name || '(no name)'} <span className="text-neutral-500">— {c.email || '(no email)'}</span></p>
+                      {c.company && <p className="text-xs text-neutral-400">{c.company}{c.role ? ` · ${c.role}` : ''}</p>}
+                      <div className="flex gap-2 mt-1 flex-wrap">
+                        {c.linkedin_url && <span className="text-xs text-blue-400">💼</span>}
+                        {c.twitter_url && <span className="text-xs text-sky-400">✖</span>}
+                        {c.website_url && <span className="text-xs text-neutral-500">🌐</span>}
+                        {c.twitch_url && <span className="text-xs text-purple-400">🟣</span>}
+                        {c.youtube_url && <span className="text-xs text-red-400">▶</span>}
+                        {c.tiktok_url && <span className="text-xs text-pink-400">🎵</span>}
+                        {c.instagram_url && <span className="text-xs text-rose-400">📸</span>}
+                        {c.discord_url && <span className="text-xs text-indigo-400">💬</span>}
+                        {!c.linkedin_url && !c.twitter_url && !c.website_url && !c.twitch_url && !c.youtube_url && !c.tiktok_url && !c.instagram_url && !c.discord_url && <span className="text-xs text-neutral-600">No social links parsed</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
