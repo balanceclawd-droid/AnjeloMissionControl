@@ -231,6 +231,12 @@ export default function AmbassadorPage() {
     }
   }
 
+  async function handleDeleteCampaign(campaignId: string) {
+    if (!confirm('Delete this campaign? This cannot be undone.')) return
+    await fetch(`/api/ambassador/campaigns/${campaignId}`, { method: 'DELETE' })
+    fetchCampaigns()
+  }
+
   async function handleGenerateDrafts(replyId: string) {
     setDraftLoading(prev => ({ ...prev, [replyId]: true }))
     try {
@@ -548,8 +554,9 @@ export default function AmbassadorPage() {
                       </div>
                     ))}
                   </div>
-                  <div className="flex gap-3">
+                  <div className="flex gap-2">
                     <button onClick={() => { setEditingCampaign(c); setCampaignForm(c) }} className="flex-1 bg-neutral-800 text-neutral-300 px-3 py-2 rounded-lg text-sm hover:bg-neutral-700 transition-colors">Edit</button>
+                    <button onClick={() => handleDeleteCampaign(c.id)} className="bg-neutral-800 text-neutral-500 px-3 py-2 rounded-lg text-sm hover:bg-red-900 hover:text-red-300 transition-colors">🗑</button>
                     <button onClick={() => handleLaunchCampaign(c.id)} disabled={launchLoading || c.status === 'active'} className="flex-1 bg-accent-red text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
                       {launchLoading ? '...' : 'Launch'}
                     </button>
