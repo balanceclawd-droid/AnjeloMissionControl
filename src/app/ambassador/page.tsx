@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 
 type Contact = {
   id: string
@@ -11,8 +11,9 @@ type Contact = {
   notes: string
   status: string
   campaign_id: string | null
-  last_activity: string
-  next_step: string
+  smartlead_lead_id: string | null
+  last_activity: string | null
+  next_step: string | null
   last_activity_at: string
 }
 
@@ -31,11 +32,29 @@ type Campaign = {
 type Reply = {
   id: string
   contact_id: string
-  campaign_id: string
+  campaign_id: string | null
   thread_text: string
-  draft_a: string
-  draft_b: string
+  draft_a: string | null
+  draft_b: string | null
   status: string
+  received_at: string
+  processed_at: string | null
+  contact?: Contact
+}
+
+type Settings = {
+  id: string | null
+  opportunity_brief: string
+  default_timezone: string
+  send_window_start: string
+  send_window_end: string
+}
+
+type ToneExample = {
+  id: string
+  body: string
+  source: string
+  created_at: string
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -56,80 +75,85 @@ export default function AmbassadorPage() {
   const [replies, setReplies] = useState<Reply[]>([])
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settings, setSettings] = useState<Settings>({ id: null, opportunity_brief: '', default_timezone: 'Europe/London', send_window_start: '09:00', send_window_end: '17:00' })
+  const [toneExamples, setToneExamples] = useState<ToneExample[]>([])
+  const [settingsSaving, setSettingsSaving] = useState(false)
 
   // Import state
-  const [importMode, setImportMode] = useState<'csv' | 'paste' | 'manual'>('paste')
+  const [importMode, setImportMode] = useState<'paste' | 'csv' | 'manual'>('paste')
   const [pasteText, setPasteText] = useState('')
   const [manualForm, setManualForm] = useState({ name: '', email: '', company: '', role: '', notes: '' })
   const [importLoading, setImportLoading] = useState(false)
 
-  // Campaign edit state
+  // Campaign state
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null)
   const [campaignForm, setCampaignForm] = useState<Partial<Campaign>>({})
   const [launchLoading, setLaunchLoading] = useState(false)
 
   // Reply action state
-  const [replyDraft, setReplyDraft] = useState<{ draft_a: string; draft_b: string } | null>(null)
+  const [draftLoading, setDraftLoading] = useState<Record<string, boolean>>({})
+  const [sendingReply, setSendingReply] = useState<string | null>(null)
+
+  const fetchContacts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/ambassador/contacts')
+      if (res.ok) setContacts(await res.json())
+    } catch {}
+  }, [])
+
+  const fetchCampaigns = useCallback(async () => {
+    try {
+      const res = await fetch('/api/ambassador/campaigns')
+      if (res.ok) setCampaigns(await res.json())
+    } catch {}
+  }, [])
+
+  const fetchReplies = useCallback(async () => {
+    try {
+      const res = await fetch('/api/ambassador/replies')
+      if (res.ok) setReplies(await res.json())
+    } catch {}
+  }, [])
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/ambassador/settings')
+      if (res.ok) setSettings(await res.json())
+    } catch {}
+  }, [])
+
+  const fetchToneExamples = useCallback(async () => {
+    try {
+      const res = await fetch('/api/ambassador/tone-examples')
+      if (res.ok) setToneExamples(await res.json())
+    } catch {}
+  }, [])
 
   useEffect(() => {
     fetchContacts()
     fetchCampaigns()
     fetchReplies()
-  }, [])
-
-  async function fetchContacts() {
-    try {
-      const res = await fetch('/api/ambassador/contacts')
-      if (res.ok) {
-        const data = await res.json()
-        setContacts(data)
-      }
-    } catch {}
-  }
-
-  async function fetchCampaigns() {
-    try {
-      const res = await fetch('/api/ambassador/campaigns')
-      if (res.ok) {
-        const data = await res.json()
-        setCampaigns(data)
-      }
-    } catch {}
-  }
-
-  async function fetchReplies() {
-    try {
-      const res = await fetch('/api/ambassador/replies')
-      if (res.ok) {
-        const data = await res.json()
-        setReplies(data)
-      }
-    } catch {}
-  }
+  }, [fetchContacts, fetchCampaigns, fetchReplies])
 
   async function handleImport() {
     setImportLoading(true)
     try {
       let parsed: Partial<Contact>[] = []
-
       if (importMode === 'paste' && pasteText.trim()) {
-        const lines = pasteText.trim().split('\n')
-        parsed = lines.map(line => {
-          const parts = line.split(/[\t,]/).map(s => s.trim())
+        parsed = pasteText.trim().split('\n').map(line => {
+          const parts = line.split(/[\t,]/).map(s => s.trim()).filter(Boolean)
           return { name: parts[0] || '', email: parts[1] || '', company: parts[2] || '', role: parts[3] || '', notes: parts[4] || '' }
         }).filter(r => r.email)
       } else if (importMode === 'manual' && manualForm.email) {
         parsed = [manualForm]
       }
-
       if (!parsed.length) return
-
       const res = await fetch('/api/ambassador/contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contacts: parsed }),
       })
-
       if (res.ok) {
         fetchContacts()
         setPasteText('')
@@ -150,13 +174,11 @@ export default function AmbassadorPage() {
         const parts = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''))
         return { name: parts[0] || '', email: parts[1] || '', company: parts[2] || '', role: parts[3] || '', notes: parts[4] || '' }
       }).filter(r => r.email)
-
       const res = await fetch('/api/ambassador/contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contacts: parsed }),
       })
-
       if (res.ok) {
         fetchContacts()
         setActiveTab('pipeline')
@@ -190,15 +212,78 @@ export default function AmbassadorPage() {
     }
   }
 
-  async function handleReplyAction(replyId: string, action: string, editedText?: string) {
-    const res = await fetch(`/api/ambassador/replies/${replyId}`, {
+  async function handleGenerateDrafts(replyId: string) {
+    setDraftLoading(prev => ({ ...prev, [replyId]: true }))
+    try {
+      const res = await fetch('/api/ambassador/reply/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reply_id: replyId }),
+      })
+      if (res.ok) {
+        fetchReplies()
+      }
+    } finally {
+      setDraftLoading(prev => ({ ...prev, [replyId]: false }))
+    }
+  }
+
+  async function handleSendReply(replyId: string, chosenOption: string, editedBody?: string) {
+    setSendingReply(replyId)
+    try {
+      const res = await fetch('/api/ambassador/reply/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reply_id: replyId, chosen_option: chosenOption, edited_body: editedBody }),
+      })
+      if (res.ok) {
+        fetchReplies()
+        fetchContacts()
+        fetchToneExamples()
+      }
+    } finally {
+      setSendingReply(null)
+    }
+  }
+
+  async function handleDiscardReply(replyId: string) {
+    await fetch(`/api/ambassador/replies/${replyId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, edited_text: editedText }),
+      body: JSON.stringify({ action: 'discarded' }),
     })
-    if (res.ok) {
-      fetchReplies()
+    fetchReplies()
+  }
+
+  async function handleSaveSettings() {
+    setSettingsSaving(true)
+    try {
+      const res = await fetch('/api/ambassador/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      })
+      if (res.ok) {
+        setSettingsOpen(false)
+        fetchSettings()
+      }
+    } finally {
+      setSettingsSaving(false)
     }
+  }
+
+  async function handleDeleteToneExample(id: string) {
+    await fetch(`/api/ambassador/tone-examples?id=${id}`, { method: 'DELETE' })
+    fetchToneExamples()
+  }
+
+  async function handleAddToneExample(body: string) {
+    await fetch('/api/ambassador/tone-examples', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body, source: 'manual' }),
+    })
+    fetchToneExamples()
   }
 
   const groupedContacts = STATUS_ORDER.reduce<Record<string, Contact[]>>((acc, status) => {
@@ -211,9 +296,18 @@ export default function AmbassadorPage() {
   return (
     <div className="max-w-[1600px]">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">✉ Ambassador Outreach</h1>
-        <p className="text-sm text-neutral-500 mt-1">Manage recruiting contacts, campaigns, and reply approval</p>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">✉ Ambassador Outreach</h1>
+          <p className="text-sm text-neutral-500 mt-1">Recruiting pipeline, campaigns, and reply approval</p>
+        </div>
+        <button
+          onClick={() => { setSettingsOpen(true); fetchSettings(); fetchToneExamples() }}
+          className="text-neutral-500 hover:text-white transition-colors text-xl"
+          title="Settings"
+        >
+          ⚙
+        </button>
       </div>
 
       {/* Tabs */}
@@ -223,9 +317,7 @@ export default function AmbassadorPage() {
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              activeTab === tab
-                ? 'border-accent-red text-white'
-                : 'border-transparent text-neutral-500 hover:text-neutral-300'
+              activeTab === tab ? 'border-accent-red text-white' : 'border-transparent text-neutral-500 hover:text-neutral-300'
             }`}
           >
             {tab === 'pipeline' ? 'Pipeline' : tab === 'import' ? 'Import Contacts' : tab === 'campaigns' ? 'Campaigns' : 'Reply Inbox'}
@@ -236,10 +328,9 @@ export default function AmbassadorPage() {
         ))}
       </div>
 
-      {/* PIPELINE TAB */}
+      {/* PIPELINE */}
       {activeTab === 'pipeline' && (
         <div>
-          {/* Kanban header */}
           <div className="grid grid-cols-6 gap-3 mb-4">
             {STATUS_ORDER.map(status => (
               <div key={status} className="bg-neutral-900 border border-neutral-800 rounded-lg p-3">
@@ -248,8 +339,6 @@ export default function AmbassadorPage() {
               </div>
             ))}
           </div>
-
-          {/* Pipeline rows */}
           <div className="space-y-3">
             {STATUS_ORDER.map(status => (
               groupedContacts[status]?.length > 0 && (
@@ -259,7 +348,7 @@ export default function AmbassadorPage() {
                     {groupedContacts[status].map(contact => (
                       <div
                         key={contact.id}
-                        onClick={() => { setSelectedContact(contact); setDrawerOpen(true); }}
+                        onClick={() => { setSelectedContact(contact); setDrawerOpen(true) }}
                         className="bg-neutral-900 border border-neutral-800 rounded-lg p-4 hover:border-neutral-700 cursor-pointer transition-colors"
                       >
                         <div className="flex items-start justify-between gap-4">
@@ -288,25 +377,21 @@ export default function AmbassadorPage() {
         </div>
       )}
 
-      {/* IMPORT TAB */}
+      {/* IMPORT */}
       {activeTab === 'import' && (
         <div className="grid grid-cols-3 gap-4">
-          {/* Toggle */}
           <div className="col-span-3 flex gap-2 mb-4">
             {(['paste', 'csv', 'manual'] as const).map(mode => (
               <button
                 key={mode}
                 onClick={() => setImportMode(mode)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  importMode === mode ? 'bg-accent-red text-white' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
-                }`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${importMode === mode ? 'bg-accent-red text-white' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'}`}
               >
                 {mode === 'paste' ? 'Paste from Clipboard' : mode === 'csv' ? 'CSV Upload' : 'Manual Entry'}
               </button>
             ))}
           </div>
 
-          {/* Paste */}
           {importMode === 'paste' && (
             <div className="col-span-2 bg-neutral-900 border border-neutral-800 rounded-lg p-5">
               <p className="text-sm font-medium text-white mb-3">Paste comma or tab-separated values</p>
@@ -315,176 +400,100 @@ export default function AmbassadorPage() {
                 value={pasteText}
                 onChange={e => setPasteText(e.target.value)}
                 rows={10}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:border-accent-red"
+                className="w-full"
                 placeholder={"Alice Smith, alice@acme.com, Acme Corp, VP Engineering, Warm intro from YC\nBob Jones, bob@startup.io, Startup.io, CEO, Referred by Charlie"}
               />
-              <button
-                onClick={handleImport}
-                disabled={importLoading || !pasteText.trim()}
-                className="mt-4 bg-accent-red text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
-              >
+              <button onClick={handleImport} disabled={importLoading || !pasteText.trim()} className="mt-4 bg-accent-red text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
                 {importLoading ? 'Importing...' : 'Import Contacts'}
               </button>
             </div>
           )}
 
-          {/* CSV */}
           {importMode === 'csv' && (
             <div className="col-span-2 bg-neutral-900 border border-neutral-800 rounded-lg p-5">
               <p className="text-sm font-medium text-white mb-3">Upload CSV file</p>
               <p className="text-xs text-neutral-500 mb-4">Columns: Name, Email, Company, Role, Notes</p>
               <label className="block border-2 border-dashed border-neutral-700 rounded-lg p-10 text-center cursor-pointer hover:border-neutral-600 transition-colors">
-                <input
-                  type="file"
-                  accept=".csv"
-                  className="hidden"
-                  onChange={e => {
-                    const file = e.target.files?.[0]
-                    if (file) handleCsvUpload(file)
-                  }}
-                />
-                <p className="text-neutral-400">Drop CSV file here or click to upload</p>
-                <p className="text-xs text-neutral-600 mt-2">.csv only, max 10MB</p>
+                <input type="file" accept=".csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleCsvUpload(f) }} />
+                <p className="text-neutral-400">Drop CSV or click to upload</p>
+                <p className="text-xs text-neutral-600 mt-2">.csv only</p>
               </label>
             </div>
           )}
 
-          {/* Manual */}
           {importMode === 'manual' && (
             <div className="col-span-2 bg-neutral-900 border border-neutral-800 rounded-lg p-5">
-              <p className="text-sm font-medium text-white mb-4">Add single contact manually</p>
+              <p className="text-sm font-medium text-white mb-4">Add single contact</p>
               <div className="grid grid-cols-2 gap-4">
-                {(['name', 'email', 'company', 'role', 'notes'].map(field => (
-                  <div key={field} className={field === 'notes' ? 'col-span-2' : ''}>
+                {(['name', 'email', 'company', 'role'] as const).map(field => (
+                  <div key={field}>
                     <label className="block text-xs text-neutral-500 mb-1.5 capitalize">{field}</label>
-                    {field === 'notes' ? (
-                      <textarea
-                        value={manualForm.notes}
-                        onChange={e => setManualForm(f => ({ ...f, notes: e.target.value }))}
-                        rows={3}
-                        className="w-full"
-                        placeholder="Notes about this contact..."
-                      />
-                    ) : (
-                      <input
-                        type={field === 'email' ? 'email' : 'text'}
-                        value={manualForm[field as keyof typeof manualForm]}
-                        onChange={e => setManualForm(f => ({ ...f, [field]: e.target.value }))}
-                        className="w-full"
-                        placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
-                      />
-                    )}
+                    <input type={field === 'email' ? 'email' : 'text'} value={manualForm[field]} onChange={e => setManualForm(f => ({ ...f, [field]: e.target.value }))} className="w-full" placeholder={field.charAt(0).toUpperCase() + field.slice(1)} />
                   </div>
-                )))}
+                ))}
+                <div className="col-span-2">
+                  <label className="block text-xs text-neutral-500 mb-1.5">Notes</label>
+                  <textarea value={manualForm.notes} onChange={e => setManualForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="w-full" placeholder="Notes..." />
+                </div>
               </div>
-              <button
-                onClick={handleImport}
-                disabled={importLoading || !manualForm.email}
-                className="mt-4 bg-accent-red text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
-              >
+              <button onClick={handleImport} disabled={importLoading || !manualForm.email} className="mt-4 bg-accent-red text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
                 {importLoading ? 'Adding...' : 'Add Contact'}
               </button>
             </div>
           )}
 
-          {/* Quick stats */}
           <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
             <p className="text-sm font-medium text-white mb-3">Contact Stats</p>
             <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-sm text-neutral-400">Total contacts</span>
-                <span className="text-sm font-semibold text-white">{contacts.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-neutral-400">New</span>
-                <span className="text-sm font-semibold text-white">{groupedContacts.new?.length || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-neutral-400">Contacted</span>
-                <span className="text-sm font-semibold text-white">{groupedContacts.contacted?.length || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-neutral-400">Replied</span>
-                <span className="text-sm font-semibold text-white">{groupedContacts.replied?.length || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-neutral-400">Interested</span>
-                <span className="text-sm font-semibold text-emerald-400">{groupedContacts.interested?.length || 0}</span>
-              </div>
+              {[['Total', contacts.length], ['New', groupedContacts.new?.length || 0], ['Contacted', groupedContacts.contacted?.length || 0], ['Replied', groupedContacts.replied?.length || 0], ['Interested', groupedContacts.interested?.length || 0]].map(([label, val]) => (
+                <div key={label as string} className="flex justify-between">
+                  <span className="text-sm text-neutral-400">{label as string}</span>
+                  <span className="text-sm font-semibold text-white">{val as number}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* CAMPAIGNS TAB */}
+      {/* CAMPAIGNS */}
       {activeTab === 'campaigns' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm text-neutral-400">{campaigns.length} campaign{campaigns.length !== 1 ? 's' : ''} total</p>
-            <button
-              onClick={async () => {
-                const res = await fetch('/api/ambassador/campaigns', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ name: 'New Campaign' }),
-                })
-                if (res.ok) fetchCampaigns()
-              }}
-              className="bg-accent-red text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
-            >
+            <p className="text-sm text-neutral-400">{campaigns.length} campaign{campaigns.length !== 1 ? 's' : ''}</p>
+            <button onClick={async () => {
+              const res = await fetch('/api/ambassador/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'New Campaign' }) })
+              if (res.ok) fetchCampaigns()
+            }} className="bg-accent-red text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors">
               + New Campaign
             </button>
           </div>
-
           {campaigns.length === 0 ? (
             <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-12 text-center">
-              <p className="text-neutral-400">No campaigns yet. Create your first one.</p>
-              <p className="text-xs text-neutral-600 mt-2">Campaigns configure your outreach sequences in Smartlead</p>
+              <p className="text-neutral-400">No campaigns yet.</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4">
-              {campaigns.map(campaign => (
-                <div key={campaign.id} className="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
+              {campaigns.map(c => (
+                <div key={c.id} className="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
                   <div className="flex items-start justify-between gap-3 mb-4">
                     <div>
-                      <p className="font-medium text-white">{campaign.name}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded mt-1 inline-block ${
-                        campaign.status === 'active' ? 'bg-emerald-900 text-emerald-300' :
-                        campaign.status === 'draft' ? 'bg-neutral-800 text-neutral-300' :
-                        'bg-neutral-800 text-neutral-500'
-                      }`}>{campaign.status}</span>
+                      <p className="font-medium text-white">{c.name}</p>
+                      <span className={`text-xs px-2 py-0.5 rounded mt-1 inline-block ${c.status === 'active' ? 'bg-emerald-900 text-emerald-300' : 'bg-neutral-800 text-neutral-300'}`}>{c.status}</span>
                     </div>
                   </div>
-
-                  {/* 3-step sequence preview */}
                   <div className="space-y-2 mb-4">
-                    {[
-                      campaign.step1_template || 'Step 1 — Initial outreach',
-                      campaign.step2_template || 'Step 2 — Follow-up (~3 days)',
-                      campaign.step3_template || 'Step 3 — Final follow-up (~7 days)',
-                    ].map((step, i) => (
+                    {[(c.step1_template || 'Step 1 — Initial outreach'), (c.step2_template || 'Step 2 — Follow-up (~3 days)'), (c.step3_template || 'Step 3 — Final follow-up (~7 days)')].map((step, i) => (
                       <div key={i} className="flex gap-3 items-start">
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs text-neutral-300 font-medium">
-                          {i + 1}
-                        </div>
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs text-neutral-300 font-medium">{i + 1}</div>
                         <p className="text-sm text-neutral-400">{step}</p>
                       </div>
                     ))}
                   </div>
-
                   <div className="flex gap-3">
-                    <button
-                      onClick={() => { setEditingCampaign(campaign); setCampaignForm(campaign); }}
-                      className="flex-1 bg-neutral-800 text-neutral-300 px-3 py-2 rounded-lg text-sm hover:bg-neutral-700 transition-colors"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleLaunchCampaign(campaign.id)}
-                      disabled={launchLoading || campaign.status === 'active'}
-                      className="flex-1 bg-accent-red text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
-                    >
-                      {launchLoading ? 'Launching...' : 'Launch'}
+                    <button onClick={() => { setEditingCampaign(c); setCampaignForm(c) }} className="flex-1 bg-neutral-800 text-neutral-300 px-3 py-2 rounded-lg text-sm hover:bg-neutral-700 transition-colors">Edit</button>
+                    <button onClick={() => handleLaunchCampaign(c.id)} disabled={launchLoading || c.status === 'active'} className="flex-1 bg-accent-red text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
+                      {launchLoading ? '...' : 'Launch'}
                     </button>
                   </div>
                 </div>
@@ -494,15 +503,14 @@ export default function AmbassadorPage() {
         </div>
       )}
 
-      {/* INBOX TAB */}
+      {/* INBOX */}
       {activeTab === 'inbox' && (
         <div>
-          <p className="text-sm text-neutral-400 mb-4">{pendingReplies.length} reply(ies) awaiting approval</p>
-
+          <p className="text-sm text-neutral-400 mb-4">{pendingReplies.length} pending approval</p>
           {pendingReplies.length === 0 ? (
             <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-12 text-center">
-              <p className="text-neutral-400">No replies pending approval. All caught up.</p>
-              <p className="text-xs text-neutral-600 mt-2">Replies from prospects will appear here after Smartlead AI drafts options</p>
+              <p className="text-neutral-400">No replies pending. All caught up.</p>
+              <p className="text-xs text-neutral-600 mt-2">Inbound replies from Smartlead appear here for AI draft + approval</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -510,11 +518,22 @@ export default function AmbassadorPage() {
                 <div key={reply.id} className="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
                   {/* Thread */}
                   <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-4 mb-4 text-sm text-neutral-300 whitespace-pre-wrap">
-                    {reply.thread_text || 'No thread context available'}
+                    {reply.thread_text || 'No thread context'}
                   </div>
 
-                  {/* Draft options */}
-                  {reply.draft_a || reply.draft_b ? (
+                  {/* Drafts */}
+                  {!reply.draft_a && !reply.draft_b ? (
+                    <div className="text-center py-6">
+                      <p className="text-sm text-neutral-500 mb-3">No drafts generated yet</p>
+                      <button
+                        onClick={() => handleGenerateDrafts(reply.id)}
+                        disabled={draftLoading[reply.id]}
+                        className="bg-blue-800 text-blue-200 px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                      >
+                        {draftLoading[reply.id] ? 'Generating...' : '✨ Generate AI Drafts'}
+                      </button>
+                    </div>
+                  ) : (
                     <div className="grid grid-cols-2 gap-4">
                       {[reply.draft_a, reply.draft_b].filter(Boolean).map((draft, i) => (
                         <div key={i} className="border border-neutral-700 rounded-lg p-4">
@@ -522,18 +541,19 @@ export default function AmbassadorPage() {
                           <p className="text-sm text-white whitespace-pre-wrap mb-4">{draft}</p>
                           <div className="flex gap-2">
                             <button
-                              onClick={() => handleReplyAction(reply.id, 'approved')}
-                              className="flex-1 bg-emerald-800 text-emerald-200 px-3 py-2 rounded-lg text-xs font-medium hover:bg-emerald-700 transition-colors"
+                              onClick={() => handleSendReply(reply.id, String.fromCharCode(65 + i))}
+                              disabled={sendingReply === reply.id}
+                              className="flex-1 bg-emerald-800 text-emerald-200 px-3 py-2 rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"
                             >
                               ✅ Approve & Send
                             </button>
                             <button
                               onClick={() => {
-                                setReplyDraft({ draft_a: reply.draft_a || '', draft_b: reply.draft_b || '' })
-                                // For edit mode, we use a simple approach - just mark which was edited
-                                handleReplyAction(reply.id, 'edited', draft || '')
+                                const edited = window.prompt('Edit your reply:')
+                                if (edited) handleSendReply(reply.id, `edited_${String.fromCharCode(97 + i)}`, edited)
                               }}
-                              className="flex-1 bg-blue-900 text-blue-200 px-3 py-2 rounded-lg text-xs font-medium hover:bg-blue-800 transition-colors"
+                              disabled={sendingReply === reply.id}
+                              className="flex-1 bg-blue-900 text-blue-200 px-3 py-2 rounded-lg text-xs font-medium hover:bg-blue-800 disabled:opacity-50 transition-colors"
                             >
                               ✏️ Edit & Send
                             </button>
@@ -541,17 +561,10 @@ export default function AmbassadorPage() {
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <div className="text-center py-6 text-neutral-500 text-sm">
-                      Drafts not yet generated. Smartlead AI will produce options shortly.
-                    </div>
                   )}
 
                   <div className="mt-3 flex justify-end">
-                    <button
-                      onClick={() => handleReplyAction(reply.id, 'discarded')}
-                      className="text-xs text-neutral-600 hover:text-neutral-400 transition-colors"
-                    >
+                    <button onClick={() => handleDiscardReply(reply.id)} className="text-xs text-neutral-600 hover:text-neutral-400 transition-colors">
                       ❌ Discard Both
                     </button>
                   </div>
@@ -562,14 +575,11 @@ export default function AmbassadorPage() {
         </div>
       )}
 
-      {/* Contact Drawer */}
+      {/* CONTACT DRAWER */}
       {drawerOpen && selectedContact && (
         <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setDrawerOpen(false)}>
           <div className="absolute inset-0 bg-black/50" />
-          <div
-            className="relative w-[480px] bg-neutral-900 border-l border-neutral-800 h-full overflow-y-auto p-6"
-            onClick={e => e.stopPropagation()}
-          >
+          <div className="relative w-[480px] bg-neutral-900 border-l border-neutral-800 h-full overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-6">
               <div>
                 <p className="text-xl font-semibold text-white">{selectedContact.name}</p>
@@ -577,7 +587,6 @@ export default function AmbassadorPage() {
               </div>
               <button onClick={() => setDrawerOpen(false)} className="text-neutral-500 hover:text-white transition-colors text-xl">✕</button>
             </div>
-
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3">
@@ -589,21 +598,12 @@ export default function AmbassadorPage() {
                   <p className="text-sm text-white mt-1">{STATUS_LABELS[selectedContact.status]}</p>
                 </div>
               </div>
-
               {selectedContact.notes && (
                 <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3">
                   <p className="text-xs text-neutral-500">Notes</p>
                   <p className="text-sm text-neutral-300 mt-1">{selectedContact.notes}</p>
                 </div>
               )}
-
-              {selectedContact.last_activity && (
-                <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3">
-                  <p className="text-xs text-neutral-500">Last Activity</p>
-                  <p className="text-sm text-neutral-300 mt-1">{selectedContact.last_activity}</p>
-                </div>
-              )}
-
               <div>
                 <p className="text-xs text-neutral-500 mb-2">Update Status</p>
                 <div className="flex flex-wrap gap-2">
@@ -611,11 +611,7 @@ export default function AmbassadorPage() {
                     <button
                       key={status}
                       onClick={() => handleUpdateStatus(selectedContact.id, status)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                        selectedContact.status === status
-                          ? 'bg-accent-red text-white'
-                          : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
-                      }`}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${selectedContact.status === status ? 'bg-accent-red text-white' : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'}`}
                     >
                       {STATUS_LABELS[status]}
                     </button>
@@ -626,6 +622,98 @@ export default function AmbassadorPage() {
           </div>
         </div>
       )}
+
+      {/* SETTINGS PANEL */}
+      {settingsOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSettingsOpen(false)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative w-[560px] bg-neutral-900 border-l border-neutral-800 h-full overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-6">
+              <p className="text-xl font-semibold text-white">⚙ Settings</p>
+              <button onClick={() => setSettingsOpen(false)} className="text-neutral-500 hover:text-white transition-colors text-xl">✕</button>
+            </div>
+
+            <div className="space-y-6">
+              {/* About Me / Opportunity Brief */}
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">About Me / Opportunity Brief</label>
+                <p className="text-xs text-neutral-500 mb-3">Injected into every AI draft generation call</p>
+                <textarea
+                  value={settings.opportunity_brief}
+                  onChange={e => setSettings(s => ({ ...s, opportunity_brief: e.target.value }))}
+                  rows={6}
+                  className="w-full"
+                  placeholder="We represent a network of high-net-worth investors interested in off-market commercial property..."
+                />
+              </div>
+
+              {/* Send settings */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1.5">Timezone</label>
+                  <input value={settings.default_timezone} onChange={e => setSettings(s => ({ ...s, default_timezone: e.target.value }))} className="w-full" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs text-neutral-500 mb-1.5">Send from</label>
+                    <input value={settings.send_window_start} onChange={e => setSettings(s => ({ ...s, send_window_start: e.target.value }))} className="w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-neutral-500 mb-1.5">Send until</label>
+                    <input value={settings.send_window_end} onChange={e => setSettings(s => ({ ...s, send_window_end: e.target.value }))} className="w-full" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Webhook URL */}
+              <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-4">
+                <p className="text-sm font-medium text-white mb-1">Webhook URL</p>
+                <p className="text-xs text-neutral-500 mb-3">Paste this into Smartlead campaign settings</p>
+                <div className="flex gap-2">
+                  <input value={`${typeof window !== 'undefined' ? window.location.origin : ''}/api/ambassador/webhook`} readOnly className="flex-1 text-xs bg-neutral-900" />
+                  <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}/api/ambassador/webhook`)} className="bg-neutral-800 text-neutral-300 px-3 py-1.5 rounded-lg text-xs hover:bg-neutral-700">Copy</button>
+                </div>
+              </div>
+
+              {/* Smartlead API key — display only */}
+              <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-4">
+                <p className="text-sm font-medium text-white mb-1">Smartlead API Key</p>
+                <p className="text-xs text-neutral-500 mb-3">Managed in Vercel dashboard — not editable here</p>
+                <p className="text-xs text-neutral-400 font-mono">SMARTLEAD_API_KEY (set in Vercel env vars)</p>
+              </div>
+
+              <button onClick={handleSaveSettings} disabled={settingsSaving} className="w-full bg-accent-red text-white py-2.5 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
+                {settingsSaving ? 'Saving...' : 'Save Settings'}
+              </button>
+
+              {/* Tone Examples */}
+              <div>
+                <p className="text-sm font-medium text-white mb-3">Tone Examples</p>
+                <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
+                  {toneExamples.map(example => (
+                    <div key={example.id} className="flex gap-2 items-start bg-neutral-950 border border-neutral-800 rounded-lg p-3">
+                      <p className="flex-1 text-xs text-neutral-300 whitespace-pre-wrap">{example.body}</p>
+                      <button onClick={() => handleDeleteToneExample(example.id)} className="text-neutral-600 hover:text-red-400 text-xs shrink-0">✕</button>
+                    </div>
+                  ))}
+                  {!toneExamples.length && <p className="text-xs text-neutral-600">No examples yet. Approved replies are stored automatically.</p>}
+                </div>
+                <AddToneExampleForm onAdd={handleAddToneExample} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AddToneExampleForm({ onAdd }: { onAdd: (body: string) => void }) {
+  const [value, setValue] = useState('')
+  return (
+    <div className="flex gap-2">
+      <input value={value} onChange={e => setValue(e.target.value)} placeholder="Add a tone example manually..." className="flex-1 text-sm" onKeyDown={e => { if (e.key === 'Enter' && value.trim()) { onAdd(value.trim()); setValue('') } }} />
+      <button onClick={() => { if (value.trim()) { onAdd(value.trim()); setValue('') } }} className="bg-neutral-800 text-neutral-300 px-3 py-1.5 rounded-lg text-xs hover:bg-neutral-700">Add</button>
     </div>
   )
 }

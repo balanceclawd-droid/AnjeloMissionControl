@@ -10,7 +10,7 @@
     "reddit:browser": "node scripts/reddit_browser_collect.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.1",
+    "@supabase/supabase-js": "^2.104.0",
     "next": "^14.2.21",
     "playwright": "^1.59.1",
     "react": "^18.3.1",
