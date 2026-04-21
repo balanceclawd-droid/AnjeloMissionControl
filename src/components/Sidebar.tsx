@@ -11,6 +11,7 @@ const navItems = [
   { href: '/strategy', label: 'Strategy', icon: '⚔' },
   { href: '/alerts', label: 'Alerts', icon: '⚡' },
   { href: '/research', label: 'Research', icon: '🔭' },
+  { href: '/ambassador', label: 'Ambassador', icon: '✉' },
 ]
 
 export default function Sidebar() {
