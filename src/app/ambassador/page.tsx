@@ -14,6 +14,9 @@ type Contact = {
   smartlead_lead_id: string | null
   last_activity: string | null
   next_step: string | null
+  linkedin_url: string | null
+  twitter_url: string | null
+  website_url: string | null
   last_activity_at: string
 }
 
@@ -83,7 +86,7 @@ export default function AmbassadorPage() {
   // Import state
   const [importMode, setImportMode] = useState<'paste' | 'csv' | 'manual'>('paste')
   const [pasteText, setPasteText] = useState('')
-  const [manualForm, setManualForm] = useState({ name: '', email: '', company: '', role: '', notes: '' })
+  const [manualForm, setManualForm] = useState({ name: '', email: '', company: '', role: '', notes: '', linkedin_url: '', twitter_url: '', website_url: '' })
   const [importLoading, setImportLoading] = useState(false)
 
   // Campaign state
@@ -157,7 +160,7 @@ export default function AmbassadorPage() {
       if (res.ok) {
         fetchContacts()
         setPasteText('')
-        setManualForm({ name: '', email: '', company: '', role: '', notes: '' })
+        setManualForm({ name: '', email: '', company: '', role: '', notes: '', linkedin_url: '', twitter_url: '', website_url: '' })
         setActiveTab('pipeline')
       }
     } finally {
@@ -358,6 +361,11 @@ export default function AmbassadorPage() {
                             <p className="text-xs text-neutral-600 mt-1">{contact.email}</p>
                           </div>
                           <div className="text-right">
+                            <div className="flex items-center justify-end gap-1.5 mb-1.5">
+                              {contact.linkedin_url && <span className="text-blue-400 text-xs" title="Has LinkedIn">💼</span>}
+                              {contact.twitter_url && <span className="text-sky-400 text-xs" title="Has Twitter/X">✖</span>}
+                              {contact.website_url && <span className="text-neutral-500 text-xs" title="Has Website">🌐</span>}
+                            </div>
                             <span className={`text-xs px-2 py-1 rounded ${
                               contact.status === 'interested' ? 'bg-emerald-900 text-emerald-300' :
                               contact.status === 'converted' ? 'bg-blue-900 text-blue-300' :
@@ -431,6 +439,18 @@ export default function AmbassadorPage() {
                     <input type={field === 'email' ? 'email' : 'text'} value={manualForm[field]} onChange={e => setManualForm(f => ({ ...f, [field]: e.target.value }))} className="w-full" placeholder={field.charAt(0).toUpperCase() + field.slice(1)} />
                   </div>
                 ))}
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1.5">LinkedIn URL</label>
+                  <input type="url" value={manualForm.linkedin_url} onChange={e => setManualForm(f => ({ ...f, linkedin_url: e.target.value }))} className="w-full" placeholder="https://linkedin.com/in/..." />
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1.5">Twitter/X URL</label>
+                  <input type="url" value={manualForm.twitter_url} onChange={e => setManualForm(f => ({ ...f, twitter_url: e.target.value }))} className="w-full" placeholder="https://x.com/..." />
+                </div>
+                <div>
+                  <label className="block text-xs text-neutral-500 mb-1.5">Website</label>
+                  <input type="url" value={manualForm.website_url} onChange={e => setManualForm(f => ({ ...f, website_url: e.target.value }))} className="w-full" placeholder="https://..." />
+                </div>
                 <div className="col-span-2">
                   <label className="block text-xs text-neutral-500 mb-1.5">Notes</label>
                   <textarea value={manualForm.notes} onChange={e => setManualForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="w-full" placeholder="Notes..." />
@@ -710,12 +730,63 @@ Looking forward to connecting.`}
                   <p className="text-sm text-white mt-1">{STATUS_LABELS[selectedContact.status]}</p>
                 </div>
               </div>
+
+              {/* Social Links */}
+              {(selectedContact.linkedin_url || selectedContact.twitter_url || selectedContact.website_url) && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3">
+                  <p className="text-xs text-neutral-500 mb-2">Social</p>
+                  <div className="flex flex-wrap gap-3">
+                    {selectedContact.linkedin_url && (
+                      <a href={selectedContact.linkedin_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300">
+                        <span className="text-blue-400">💼</span> LinkedIn
+                      </a>
+                    )}
+                    {selectedContact.twitter_url && (
+                      <a href={selectedContact.twitter_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300">
+                        <span>✖</span> Twitter/X
+                      </a>
+                    )}
+                    {selectedContact.website_url && (
+                      <a href={selectedContact.website_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-300">
+                        <span>🌐</span> Website
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {selectedContact.notes && (
                 <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3">
                   <p className="text-xs text-neutral-500">Notes</p>
                   <p className="text-sm text-neutral-300 mt-1">{selectedContact.notes}</p>
                 </div>
               )}
+              {/* Social Links */}
+              {(['linkedin_url', 'twitter_url', 'website_url'] as const).map(field => {
+                const labels = { linkedin_url: 'LinkedIn', twitter_url: 'Twitter/X', website_url: 'Website' }
+                const icons = { linkedin_url: '💼', twitter_url: '✖', website_url: '🌐' }
+                const colors = { linkedin_url: 'text-blue-400', twitter_url: 'text-sky-400', website_url: 'text-neutral-400' }
+                return (
+                  <div key={field}>
+                    <label className="block text-xs text-neutral-500 mb-1.5">{icons[field]} {labels[field as keyof typeof labels]}</label>
+                    <input
+                      type="url"
+                      value={(selectedContact as Record<string, string | null>)[field] || ''}
+                      onChange={async e => {
+                        await fetch(`/api/ambassador/contacts/${selectedContact.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ [field]: e.target.value }),
+                        })
+                        setSelectedContact(c => c ? { ...c, [field]: e.target.value } : c)
+                      }}
+                      className="w-full text-sm"
+                      placeholder={`https://...`}
+                    />
+                  </div>
+                )
+              })}
+
               <div>
                 <p className="text-xs text-neutral-500 mb-2">Update Status</p>
                 <div className="flex flex-wrap gap-2">
