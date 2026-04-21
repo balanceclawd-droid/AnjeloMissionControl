@@ -125,6 +125,16 @@ function parseContactsSimple(text: string): Partial<Record<string, string>>[] {
       if (!contact.role) contact.role = companyRoleMatch[2].trim()
     }
 
+    // Derive name from email if no name found
+    if (!contact.name && contact.email) {
+      const localPart = contact.email.split('@')[0]
+      const nameFromEmail = localPart
+        .split(/[._-]/)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+        .join(' ')
+      contact.name = nameFromEmail
+    }
+
     if (contact.email || contact.name) {
       contacts.push(contact)
     }
