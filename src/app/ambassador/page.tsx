@@ -797,6 +797,29 @@ Looking forward to connecting.`}
               </div>
 
               <div>
+                <p className="text-xs text-neutral-500 mb-2">Assign to Campaign</p>
+                <select
+                  value={selectedContact.campaign_id || ''}
+                  onChange={async e => {
+                    const cid = e.target.value || null
+                    await fetch(`/api/ambassador/contacts/${selectedContact.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ campaign_id: cid }),
+                    })
+                    setSelectedContact(c => c ? { ...c, campaign_id: cid } : c)
+                    fetchContacts()
+                  }}
+                  className="w-full text-sm"
+                >
+                  <option value="">— No campaign —</option>
+                  {campaigns.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <p className="text-xs text-neutral-500 mb-2">Update Status</p>
                 <div className="flex flex-wrap gap-2">
                   {STATUS_ORDER.map(status => (
