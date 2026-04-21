@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 
-const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions'
-const GROQ_MODEL = 'llama-3.1-8b-instant'
-const GROQ_TOKEN = process.env.GROQ_API_KEY
+const MINIMAX_API = 'https://api.minimax.io/v1/chat/completions'
+const MINIMAX_MODEL = 'MiniMax-Text-01'
+const MINIMAX_TOKEN = process.env.MINIMAX_API_KEY
 
 export async function POST(req: NextRequest) {
   try {
@@ -73,17 +73,17 @@ Write Option A first (more direct), then Option B (warmer). Label each clearly.`
 
     // Call Groq twice for Option A and Option B
     async function generateDraft(instruction: string): Promise<string> {
-      if (!GROQ_TOKEN) return `Template draft (no LLM configured): ${threadText.slice(0, 100)}...`
+      if (!MINIMAX_TOKEN) return `Template draft (no LLM configured): ${threadText.slice(0, 100)}...`
 
       try {
-        const res = await fetch(GROQ_API, {
+        const res = await fetch(MINIMAX_API, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${GROQ_TOKEN}`,
+            'Authorization': `Bearer ${MINIMAX_TOKEN}`,
           },
           body: JSON.stringify({
-            model: GROQ_MODEL,
+            model: MINIMAX_MODEL,
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: instruction },

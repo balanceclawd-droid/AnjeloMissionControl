@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 
-const SMARTLEAD_API = 'https://server.smartlead.ai/api/v1'
-const SMARTLEAD_TOKEN = process.env.SMARTLEAD_API_KEY
+const SMARTLEAD_BASE = 'https://server.smartlead.ai/api/v1'
+const TOKEN = process.env.SMARTLEAD_API_KEY
 
 export async function POST(
   req: NextRequest,
@@ -11,7 +11,6 @@ export async function POST(
   try {
     const campaignId = params.id
 
-    // Fetch campaign
     const { data: campaign, error: campaignError } = await supabase
       .from('ambassador_campaigns')
       .select('*')
@@ -34,34 +33,78 @@ export async function POST(
       .eq('status', 'new')
       .limit(200)
 
-    // Call Smartlead to create campaign
     let smartleadCampaignId = campaign.smartlead_campaign_id
 
-    if (!smartleadCampaignId && SMARTLEAD_TOKEN) {
-      try {
-        const slRes = await fetch(`${SMARTLEAD_API}/campaigns`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SMARTLEAD_TOKEN}`,
-          },
-          body: JSON.stringify({
-            name: campaign.name,
-            client_ids: [],
-            timezone: campaign.timezone || 'Europe/London',
-          }),
-        })
+    if (TOKEN) {
+      // 1. Create Smartlead campaign if not already linked
+      if (!smartleadCampaignId) {
+        try {
+          const createRes = await fetch(
+            `${SMARTLEAD_BASE}/campaigns/create?api_key=${TOKEN}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: campaign.name }),
+            }
+          )
 
-        if (slRes.ok) {
-          const slData = await slRes.json()
-          smartleadCampaignId = String(slData.id)
+          if (createRes.ok) {
+            const createData = await createRes.json()
+            smartleadCampaignId = String(createData.id)
+          } else {
+            const errText = await createRes.text()
+            console.error('Smartlead create error:', errText)
+          }
+        } catch (e) {
+          console.error('Smartlead create failed:', e)
         }
-      } catch {
-        // Smartlead creation failed — continue without it
+      }
+
+      // 2. Add leads to Smartlead campaign
+      if (smartleadCampaignId && contacts?.length) {
+        const leadsPayload = contacts.map(c => ({
+          email: c.email,
+          first_name: c.name?.split(' ')[0] || '',
+          last_name: c.name?.split(' ').slice(1).join(' ') || '',
+          company_name: c.company || '',
+        }))
+
+        try {
+          await fetch(
+            `${SMARTLEAD_BASE}/campaigns/${smartleadCampaignId}/leads?api_key=${TOKEN}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(leadsPayload),
+            }
+          )
+        } catch (e) {
+          console.error('Smartlead add leads error:', e)
+        }
+
+        // 3. Update campaign settings (sequences, schedule)
+        try {
+          await fetch(
+            `${SMARTLEAD_BASE}/campaigns/${smartleadCampaignId}/settings?api_key=${TOKEN}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: campaign.name,
+                max_leads_per_day: 50,
+                min_time_btw_emails: 30,
+                stop_lead_settings: 'REPLY_TO_AN_EMAIL',
+                track_settings: 'DONT_TRACK_EMAIL_OPEN',
+              }),
+            }
+          )
+        } catch (e) {
+          console.error('Smartlead settings error:', e)
+        }
       }
     }
 
-    // Update campaign status and smartlead ID
+    // Update campaign status
     await supabase
       .from('ambassador_campaigns')
       .update({
@@ -75,7 +118,12 @@ export async function POST(
     if (contacts?.length) {
       await supabase
         .from('ambassador_contacts')
-        .update({ status: 'contacted', last_activity: `Added to campaign: ${campaign.name}`, last_activity_at: new Date().toISOString() })
+        .update({
+          status: 'contacted',
+          smartlead_lead_id: null,
+          last_activity: `Launched: ${campaign.name}`,
+          last_activity_at: new Date().toISOString(),
+        })
         .in('id', contacts.map(c => c.id))
     }
 
