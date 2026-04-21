@@ -650,36 +650,74 @@ Supports: tab-separated, comma-separated, pipe-separated, bullet points, free te
             </div>
           ) : (
             <div className="space-y-4">
-              {campaigns.map(c => (
-                <div key={c.id} className="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div>
-                      <p className="font-medium text-white">{c.name}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded mt-1 inline-block ${c.status === 'active' ? 'bg-emerald-900 text-emerald-300' : 'bg-neutral-800 text-neutral-300'}`}>{c.status}</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2 mb-4">
-                    {[
-                      c.step1_template || 'Step 1 — Initial outreach',
-                      c.step2_template || 'Step 2 — Follow-up (~3 days)',
-                      c.step3_template || 'Step 3 — Final follow-up (~7 days)',
-                    ].map((step, i) => (
-                      <div key={i} className="flex gap-3 items-start">
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs text-neutral-300 font-medium">{i + 1}</div>
-                        <p className="text-sm text-neutral-400">{step}</p>
+              {campaigns.map(c => {
+                const assignedContacts = contacts.filter(ct => ct.campaign_id === c.id)
+                const sentCount = assignedContacts.filter(ct => ct.status === 'contacted').length
+                const pendingCount = assignedContacts.filter(ct => ct.status === 'new').length
+                const repliedCount = assignedContacts.filter(ct => ct.status === 'replied' || ct.status === 'interested').length
+                return (
+                  <div key={c.id} className="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div>
+                        <p className="font-semibold text-white text-lg">{c.name}</p>
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className={`text-xs px-2 py-0.5 rounded ${c.status === 'active' ? 'bg-emerald-900 text-emerald-300' : 'bg-neutral-800 text-neutral-300'}`}>{c.status}</span>
+                          <span className="text-xs text-neutral-500">{assignedContacts.length} assigned</span>
+                        </div>
                       </div>
-                    ))}
+                      <div className="flex gap-2">
+                        <button onClick={() => { setAssigningCampaign(c); fetchContacts() }} className="bg-blue-900 text-blue-300 px-3 py-2 rounded-lg text-sm hover:bg-blue-800 transition-colors">Assign</button>
+                        <button onClick={() => { setEditingCampaign(c); setCampaignForm(c) }} className="bg-neutral-800 text-neutral-300 px-3 py-2 rounded-lg text-sm hover:bg-neutral-700 transition-colors">Edit</button>
+                        <button onClick={() => handleDeleteCampaign(c.id)} className="bg-neutral-800 text-neutral-500 px-3 py-2 rounded-lg text-sm hover:bg-red-900 hover:text-red-300 transition-colors">🗑</button>
+                        <button onClick={() => handleLaunchCampaign(c.id)} disabled={launchLoading || c.status === 'active' || assignedContacts.length === 0} className="bg-accent-red text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
+                          {launchLoading ? '...' : 'Launch'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Stats bar */}
+                    <div className="grid grid-cols-4 gap-3 mb-3">
+                      <div className="bg-neutral-800 rounded-lg px-3 py-2 text-center">
+                        <p className="text-lg font-bold text-white">{assignedContacts.length}</p>
+                        <p className="text-xs text-neutral-500">Total</p>
+                      </div>
+                      <div className="bg-neutral-800 rounded-lg px-3 py-2 text-center">
+                        <p className="text-lg font-bold text-yellow-400">{pendingCount}</p>
+                        <p className="text-xs text-neutral-500">Pending</p>
+                      </div>
+                      <div className="bg-neutral-800 rounded-lg px-3 py-2 text-center">
+                        <p className="text-lg font-bold text-emerald-400">{sentCount}</p>
+                        <p className="text-xs text-neutral-500">Sent</p>
+                      </div>
+                      <div className="bg-neutral-800 rounded-lg px-3 py-2 text-center">
+                        <p className="text-lg font-bold text-blue-400">{repliedCount}</p>
+                        <p className="text-xs text-neutral-500">Replied</p>
+                      </div>
+                    </div>
+
+                    {/* Assigned contacts list */}
+                    {assignedContacts.length > 0 && (
+                      <div className="border-t border-neutral-800 pt-3 mt-3">
+                        <p className="text-xs text-neutral-500 mb-2">Assigned Contacts</p>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {assignedContacts.map(ct => (
+                            <div key={ct.id} className="flex items-center gap-2 py-1.5 px-3 rounded bg-neutral-800/50">
+                              <span className={`w-2 h-2 rounded-full ${ct.status === 'contacted' ? 'bg-emerald-500' : ct.status === 'replied' || ct.status === 'interested' ? 'bg-blue-500' : 'bg-yellow-500'}`} />
+                              <span className="text-sm text-white flex-1 truncate">{ct.name || ct.email}</span>
+                              <span className="text-xs text-neutral-500 truncate">{ct.email}</span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${ct.status === 'contacted' ? 'bg-emerald-900 text-emerald-300' : ct.status === 'replied' || ct.status === 'interested' ? 'bg-blue-900 text-blue-300' : 'bg-yellow-900 text-yellow-300'}`}>{ct.status}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {assignedContacts.length === 0 && (
+                      <p className="text-xs text-neutral-600 mt-2">No contacts assigned yet — click Assign to add some.</p>
+                    )}
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => { setAssigningCampaign(c); fetchContacts() }} className="flex-1 bg-blue-900 text-blue-300 px-3 py-2 rounded-lg text-sm hover:bg-blue-800 transition-colors">Assign Contacts</button>
-                    <button onClick={() => { setEditingCampaign(c); setCampaignForm(c) }} className="bg-neutral-800 text-neutral-300 px-3 py-2 rounded-lg text-sm hover:bg-neutral-700 transition-colors">Edit</button>
-                    <button onClick={() => handleDeleteCampaign(c.id)} className="bg-neutral-800 text-neutral-500 px-3 py-2 rounded-lg text-sm hover:bg-red-900 hover:text-red-300 transition-colors">🗑</button>
-                    <button onClick={() => handleLaunchCampaign(c.id)} disabled={launchLoading || c.status === 'active'} className="flex-1 bg-accent-red text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
-                      {launchLoading ? '...' : 'Launch'}
-                    </button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
