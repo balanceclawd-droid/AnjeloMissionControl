@@ -157,7 +157,7 @@ async function setSmartleadSchedule(campaignId: string, campaign: { schedule_tim
         body: JSON.stringify({
           timezone: campaign.timezone || 'Europe/London',
           days_of_the_week: daysOfWeek,
-          start_hour: campaign.schedule_time ? campaign.schedule_time.split(':')[0] + ':00' : '09:00',
+          start_hour: (campaign.schedule_time as string | undefined)?.split(':')[0] + ':00' || '09:00',
           end_hour: '17:00',
           min_time_btw_emails: 30,
           max_leads_per_day: 50,
