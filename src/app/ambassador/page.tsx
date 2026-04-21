@@ -458,7 +458,7 @@ export default function AmbassadorPage() {
 
       {/* CAMPAIGNS */}
       {activeTab === 'campaigns' && (
-        <div className="space-y-4">
+        <div>
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-neutral-400">{campaigns.length} campaign{campaigns.length !== 1 ? 's' : ''}</p>
             <button onClick={async () => {
@@ -470,10 +470,10 @@ export default function AmbassadorPage() {
           </div>
           {campaigns.length === 0 ? (
             <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-12 text-center">
-              <p className="text-neutral-400">No campaigns yet.</p>
+              <p className="text-neutral-400">No campaigns yet. Click + New Campaign to start.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4">
               {campaigns.map(c => (
                 <div key={c.id} className="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
                   <div className="flex items-start justify-between gap-3 mb-4">
@@ -483,7 +483,11 @@ export default function AmbassadorPage() {
                     </div>
                   </div>
                   <div className="space-y-2 mb-4">
-                    {[(c.step1_template || 'Step 1 — Initial outreach'), (c.step2_template || 'Step 2 — Follow-up (~3 days)'), (c.step3_template || 'Step 3 — Final follow-up (~7 days)')].map((step, i) => (
+                    {[
+                      c.step1_template || 'Step 1 — Initial outreach',
+                      c.step2_template || 'Step 2 — Follow-up (~3 days)',
+                      c.step3_template || 'Step 3 — Final follow-up (~7 days)',
+                    ].map((step, i) => (
                       <div key={i} className="flex gap-3 items-start">
                         <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs text-neutral-300 font-medium">{i + 1}</div>
                         <p className="text-sm text-neutral-400">{step}</p>
@@ -498,6 +502,114 @@ export default function AmbassadorPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* CAMPAIGN EDITOR DRAWER */}
+          {editingCampaign && (
+            <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setEditingCampaign(null)}>
+              <div className="absolute inset-0 bg-black/50" />
+              <div className="relative w-[560px] bg-neutral-900 border-l border-neutral-800 h-full overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex items-start justify-between mb-6">
+                  <p className="text-xl font-semibold text-white">{editingCampaign.id ? 'Edit Campaign' : 'New Campaign'}</p>
+                  <button onClick={() => setEditingCampaign(null)} className="text-neutral-500 hover:text-white text-xl">✕</button>
+                </div>
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2">Campaign Name</label>
+                    <input
+                      value={campaignForm.name || ''}
+                      onChange={e => setCampaignForm(f => ({ ...f, name: e.target.value }))}
+                      className="w-full"
+                      placeholder="e.g. Q2 Investor Outreach"
+                    />
+                  </div>
+
+                  {[
+                    { key: 'step1_template', label: 'Step 1 — Initial Email', delay: 'Day 0 (immediate)' },
+                    { key: 'step2_template', label: 'Step 2 — Follow-up', delay: 'Day 3' },
+                    { key: 'step3_template', label: 'Step 3 — Final Follow-up', delay: 'Day 7' },
+                  ].map(({ key, label, delay }) => (
+                    <div key={key}>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-white">{label}</label>
+                        <span className="text-xs text-neutral-500">{delay}</span>
+                      </div>
+                      <textarea
+                        value={(campaignForm as Record<string, string>)[key] || ''}
+                        onChange={e => setCampaignForm(f => ({ ...f, [key]: e.target.value }))}
+                        rows={5}
+                        className="w-full text-sm"
+                        placeholder={`Hi {{first_name}},
+
+I came across ${'{company}'} and thought there might be a natural fit for our investor network...
+
+Looking forward to connecting.`}
+                      />
+                    </div>
+                  ))}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-neutral-500 mb-1.5">Timezone</label>
+                      <input
+                        value={campaignForm.timezone || 'Europe/London'}
+                        onChange={e => setCampaignForm(f => ({ ...f, timezone: e.target.value }))}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-neutral-500 mb-1.5">Schedule Time</label>
+                      <input
+                        value={campaignForm.schedule_time || '09:00'}
+                        onChange={e => setCampaignForm(f => ({ ...f, schedule_time: e.target.value }))}
+                        className="w-full"
+                        placeholder="09:00"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-neutral-500 mb-1.5">Send Days</label>
+                    <div className="flex gap-2 flex-wrap">
+                      {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => {
+                        const days = campaignForm.schedule_days || ['mon', 'tue', 'wed', 'thu', 'fri']
+                        const active = days.includes(day)
+                        return (
+                          <button
+                            key={day}
+                            onClick={() => {
+                              const current = campaignForm.schedule_days || ['mon', 'tue', 'wed', 'thu', 'fri']
+                              const next = active ? current.filter(d => d !== day) : [...current, day]
+                              setCampaignForm(f => ({ ...f, schedule_days: next }))
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${active ? 'bg-accent-red text-white' : 'bg-neutral-800 text-neutral-400'}`}
+                          >
+                            {day.charAt(0).toUpperCase() + day.slice(1)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      const res = await fetch(`/api/ambassador/campaigns/${editingCampaign.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(campaignForm),
+                      })
+                      if (res.ok) {
+                        setEditingCampaign(null)
+                        fetchCampaigns()
+                      }
+                    }}
+                    className="w-full bg-accent-red text-white py-2.5 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+                  >
+                    Save Campaign
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

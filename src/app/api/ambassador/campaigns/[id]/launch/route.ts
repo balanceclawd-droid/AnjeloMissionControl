@@ -143,7 +143,7 @@ async function addSequencesToSmartlead(campaignId: string, campaign: Record<stri
   }
 }
 
-async function setSmartleadSchedule(campaignId: string, campaign: Record<string, unknown>) {
+async function setSmartleadSchedule(campaignId: string, campaign: { schedule_time?: string; schedule_days?: string[]; timezone?: string }) {
   const scheduleDays = (campaign.schedule_days as string[]) || ['mon', 'tue', 'wed', 'thu', 'fri']
   const dayMap: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }
   const daysOfWeek = scheduleDays.map(d => dayMap[d] ?? 1)
