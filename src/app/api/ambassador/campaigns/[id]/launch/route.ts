@@ -21,8 +21,10 @@ export async function POST(
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
-    if (campaign.status === 'active') {
-      return NextResponse.json({ error: 'Campaign is already active' }, { status: 400 })
+    // Reject if campaign is active AND already has a Smartlead ID — unless we're just adding more leads
+    // The flow below (smartleadCampaignId branch) handles adding more leads to an already-active campaign
+    if (campaign.status === 'active' && !campaign.smartlead_campaign_id) {
+      return NextResponse.json({ error: 'Campaign is already active in Smartlead. New contacts will be queued for the next send.' }, { status: 400 })
     }
 
     // Fetch new contacts assigned to this campaign
@@ -36,8 +38,10 @@ export async function POST(
     let smartleadCampaignId = campaign.smartlead_campaign_id
 
     if (TOKEN && smartleadCampaignId) {
-      // Campaign already linked — just add new leads
+      // Campaign already linked to Smartlead but not yet active — add leads and activate
+      await pauseSmartleadCampaign(smartleadCampaignId)
       await addLeadsToSmartlead(smartleadCampaignId, contacts)
+      await activateSmartleadCampaign(smartleadCampaignId)
     } else if (TOKEN) {
       // 1. Create Smartlead campaign
       const newId = await createSmartleadCampaign(campaign.name)

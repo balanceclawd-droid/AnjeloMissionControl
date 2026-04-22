@@ -669,9 +669,15 @@ Supports: tab-separated, comma-separated, pipe-separated, bullet points, free te
                         <button onClick={() => { setAssigningCampaign(c); fetchContacts() }} className="bg-blue-900 text-blue-300 px-3 py-2 rounded-lg text-sm hover:bg-blue-800 transition-colors">Assign</button>
                         <button onClick={() => { setEditingCampaign(c); setCampaignForm(c) }} className="bg-neutral-800 text-neutral-300 px-3 py-2 rounded-lg text-sm hover:bg-neutral-700 transition-colors">Edit</button>
                         <button onClick={() => handleDeleteCampaign(c.id)} className="bg-neutral-800 text-neutral-500 px-3 py-2 rounded-lg text-sm hover:bg-red-900 hover:text-red-300 transition-colors">🗑</button>
-                        <button onClick={() => handleLaunchCampaign(c.id)} disabled={launchLoading || c.status === 'active' || assignedContacts.length === 0} className="bg-accent-red text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
-                          {launchLoading ? '...' : 'Launch'}
-                        </button>
+                        {c.status === 'active' ? (
+                          <button onClick={() => handleLaunchCampaign(c.id)} disabled={launchLoading || pendingCount === 0} className="bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-emerald-600 disabled:opacity-50 transition-colors">
+                            {launchLoading ? '...' : pendingCount > 0 ? `Add ${pendingCount} More` : 'All Sent'}
+                          </button>
+                        ) : (
+                          <button onClick={() => handleLaunchCampaign(c.id)} disabled={launchLoading || assignedContacts.length === 0} className="bg-accent-red text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
+                            {launchLoading ? '...' : 'Launch'}
+                          </button>
+                        )}
                       </div>
                     </div>
 
